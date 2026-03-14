@@ -4,7 +4,7 @@ EgoFlow is a repository of Meta Wearables sample apps adapted for an ego-centric
 
 Today, the end-to-end `glasses -> app -> server` pipeline is implemented on Android. iOS is intended to support the same pipeline, but RTMP forwarding and server-side ingest from iOS are not implemented yet.
 
-Some `Gemini` and `OpenClaw` integration code is still present because parts of the project were brought over from VisionClaw. Those paths are not the main focus of EgoFlow and are expected to be removed or reduced over time.
+Some `Gemini` and `OpenClaw` integration code is still present because parts of the project were brought over from [VisionClaw](https://github.com/Intent-Lab/VisionClaw). Those paths are not the main focus of EgoFlow and are expected to be removed or reduced over time.
 
 This root README is the main onboarding document. Platform-specific details still live in the sample directories, but a new developer should be able to understand the system and get a first run from here.
 
