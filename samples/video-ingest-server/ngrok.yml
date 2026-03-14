@@ -1,0 +1,11 @@
+version: 2
+tunnels:
+  video-ingest-rtmp:
+    proto: tcp
+    addr: 1935
+  video-ingest-viewer:
+    proto: http
+    addr: 8088
+  video-ingest-hls:
+    proto: http
+    addr: 8888

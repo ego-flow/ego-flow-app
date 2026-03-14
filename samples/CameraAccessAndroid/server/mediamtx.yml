@@ -1,0 +1,10 @@
+rtmp: yes
+rtmpAddress: :1935
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+
+paths:
+  live:
+    record: no

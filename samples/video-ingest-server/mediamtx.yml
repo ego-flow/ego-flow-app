@@ -1,0 +1,23 @@
+rtmp: yes
+rtmpAddress: :1935
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+
+playback: yes
+playbackAddress: :9996
+
+pathDefaults:
+  source: publisher
+  overridePublisher: yes
+  record: yes
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 1h
+  recordDeleteAfter: 0s
+
+paths:
+  live/glasses:
+    record: yes
