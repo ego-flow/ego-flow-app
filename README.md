@@ -1,39 +1,48 @@
 # EgoFlow
 
-EgoFlow is a repository of Meta Wearables sample apps adapted for an EgoFlow workflow: connect Meta AI glasses through the Device Access Toolkit (DAT), preview the camera stream, capture media, talk to Gemini Live, and optionally bridge tool-calling through OpenClaw. On Android, the repo also includes an RTMP ingest stack for browser playback and local recording.
+EgoFlow is a repository of Meta Wearables sample apps adapted for an ego-centric video pipeline: stream camera data from Meta AI glasses through the mobile app, forward it to a MediaMTX server over RTMP, and store or replay the stream in near real time.
+
+Today, the end-to-end `glasses -> app -> server` pipeline is implemented on Android. iOS is intended to support the same pipeline, but RTMP forwarding and server-side ingest from iOS are not implemented yet.
+
+Some `Gemini` and `OpenClaw` integration code is still present because parts of the project were brought over from VisionClaw. Those paths are not the main focus of EgoFlow and are expected to be removed or reduced over time.
 
 This root README is the main onboarding document. Platform-specific details still live in the sample directories, but a new developer should be able to understand the system and get a first run from here.
 
 ## Repository Map
 
-- `samples/CameraAccess`: iOS app based on Meta DAT + EgoFlow-specific Gemini/OpenClaw integration
-- `samples/CameraAccessAndroid`: Android app based on Meta DAT + EgoFlow-specific Gemini/OpenClaw/RTMP integration
-- `samples/video-ingest-server`: MediaMTX + viewer stack used by the Android app for RTMP ingest, HLS playback, and recording
-- `samples/start-ngrok.sh`: helper script that exposes RTMP, viewer, and OpenClaw over ngrok for remote testing
+- `samples/CameraAccess`: iOS app based on Meta DAT; currently supports device connection and preview flows, with RTMP ingest support planned but not implemented yet
+- `samples/CameraAccessAndroid`: Android app based on Meta DAT; currently implements the main EgoFlow streaming pipeline, including RTMP publishing to MediaMTX
+- `samples/video-ingest-server`: MediaMTX + viewer stack used for RTMP ingest, HLS playback, and recording
+- `samples/start-ngrok.sh`: helper script that exposes RTMP, viewer, and the legacy OpenClaw gateway over ngrok for remote testing
 
 ## End-to-End Pipelines
 
-### 1. Core device pipeline
+### 1. Main streaming pipeline
 
 1. A Meta AI glasses device connects to the app through Meta Wearables DAT.
 1. The app registers with the glasses via the Meta AI app in Developer Mode.
 1. DAT provides the live camera stream and photo capture APIs.
-1. The app renders live preview and can forward frames/audio into Gemini Live.
-1. If OpenClaw is configured, Gemini tool calls can be bridged to an external assistant.
+1. The mobile app renders the ego-centric preview and prepares frames/audio for forwarding.
+1. The app publishes the stream to an RTMP endpoint backed by MediaMTX.
+1. MediaMTX receives the stream, exposes HLS for playback, and writes recordings to disk.
 
-### 2. Android streaming pipeline
+Current status:
 
-1. The Android app receives frames from Meta glasses through DAT.
-1. The app can optionally publish video and audio to an RTMP URL.
-1. `samples/video-ingest-server` receives RTMP with MediaMTX.
-1. MediaMTX exposes HLS for browser playback and writes recordings locally.
-1. The included viewer page plays the HLS stream from the ingest server.
+- Android: implemented
+- iOS: planned, but RTMP forwarding and MediaMTX ingest integration are not implemented yet
 
-### 3. OpenClaw pipeline
+### 2. Local device workflow
+
+1. The app receives frames from Meta glasses through DAT.
+1. The app can render local preview even when RTMP forwarding is not being used.
+1. Platform-specific fallback modes can still be used for local testing and development.
+
+### 3. Legacy assistant pipeline
 
 1. The app collects OpenClaw host, port, and gateway token from secrets or in-app settings.
 1. Gemini/OpenClaw bridge code sends requests to the OpenClaw gateway.
 1. OpenClaw executes downstream assistant or tool actions outside the mobile app.
+1. This pipeline exists for compatibility with imported code and should be treated as non-core.
 
 ## Feature Matrix
 
@@ -42,13 +51,14 @@ This root README is the main onboarding document. Platform-specific details stil
 | Meta DAT registration and streaming | Yes | Yes |
 | Glasses camera preview | Yes | Yes |
 | Photo capture | Yes | Yes |
-| Gemini Live integration | Yes | Yes |
-| OpenClaw bridge | Yes | Yes |
 | Local iPhone / phone camera mode | Yes | Yes |
-| RTMP publishing | No | Yes |
-| MediaMTX ingest / HLS viewer / recording | No | Yes |
+| RTMP publishing to MediaMTX | Planned, not implemented | Yes |
+| End-to-end `glasses -> app -> server` pipeline | Planned, not implemented | Yes |
+| HLS playback and recording via MediaMTX | Planned, not implemented | Yes |
+| Legacy Gemini integration | Residual code only | Residual code only |
+| Legacy OpenClaw bridge | Residual code only | Residual code only |
 
-Android and iOS are not symmetric. The Android app owns the RTMP ingest story. The iOS app currently focuses on DAT, Gemini Live, OpenClaw, and iPhone fallback mode.
+Android and iOS are not symmetric yet. Android currently owns the core EgoFlow streaming story. iOS currently covers DAT registration, preview/capture flows, and iPhone fallback mode while the RTMP/server pipeline is still pending.
 
 ## Prerequisites
 
@@ -57,7 +67,6 @@ Android and iOS are not symmetric. The Android app owns the RTMP ingest story. T
 - Git
 - A Meta AI glasses device for glasses-based testing
 - Meta AI mobile app with Developer Mode enabled
-- A Gemini API key from `https://aistudio.google.com/apikey` if you want Gemini features
 
 ### Android
 
@@ -77,7 +86,8 @@ Android and iOS are not symmetric. The Android app owns the RTMP ingest story. T
 
 - Docker and Docker Compose for `samples/video-ingest-server`
 - `ngrok` for remote/tunneled testing
-- OpenClaw running locally or on a reachable host if you want tool-calling
+- A Gemini API key from `https://aistudio.google.com/apikey` if you need the residual Gemini paths
+- OpenClaw running locally or on a reachable host if you need the residual tool-calling paths
 
 ## Configuration Sources and Secrets
 
@@ -106,9 +116,10 @@ Android and iOS are not symmetric. The Android app owns the RTMP ingest story. T
 
 ### Secrets you are likely to need
 
-- `geminiAPIKey`: required for Gemini Live
-- `openClawHost`, `openClawPort`, `openClawGatewayToken`: required for OpenClaw gateway access
-- Android only: `rtmpEnabled`, `rtmpPublishUrl` for RTMP publishing
+- Android today: `rtmpEnabled`, `rtmpPublishUrl` for RTMP publishing
+- iOS later: equivalent RTMP configuration will be needed once server streaming is implemented
+- `geminiAPIKey`: only needed for the legacy Gemini integration
+- `openClawHost`, `openClawPort`, `openClawGatewayToken`: only needed for the legacy OpenClaw gateway path
 
 ## Android Setup and Run
 
@@ -131,7 +142,7 @@ cp app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/Secre
    app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/Secrets.kt
 ```
 
-4. Fill in at least the Gemini key. Add OpenClaw and RTMP values only if you need those features.
+4. Fill in RTMP values if you want to use the main Android streaming pipeline. Add Gemini/OpenClaw values only if you are intentionally testing the leftover legacy paths.
 5. Open the project in Android Studio and sync Gradle.
 6. Build and run the `app` configuration, or use Gradle:
 
@@ -149,7 +160,7 @@ cd samples/CameraAccessAndroid
 - Android permissions are granted
 - The app reaches the registered state
 - The glasses stream appears in the app
-- Gemini features no longer show placeholder configuration
+- RTMP publishing connects when enabled
 
 ## iOS Setup and Run
 
@@ -163,7 +174,7 @@ cd samples/CameraAccess
 cp CameraAccess/Secrets.swift.example CameraAccess/Secrets.swift
 ```
 
-3. Fill in at least the Gemini key. Add OpenClaw values if you need tool-calling.
+3. Fill in Gemini/OpenClaw values only if you are intentionally testing the leftover legacy paths.
 4. Open `samples/CameraAccess/CameraAccess.xcodeproj` in Xcode.
 5. Let Xcode resolve the Swift package dependency for `meta-wearables-dat-ios`.
 6. Select a physical iPhone target and confirm signing settings.
@@ -174,18 +185,21 @@ cp CameraAccess/Secrets.swift.example CameraAccess/Secrets.swift
 
 - The project deployment target is iOS 17.0.
 - The app uses the Meta DAT iOS Swift package directly from Xcode.
+- The `glasses -> app -> server` RTMP pipeline is not implemented on iOS yet.
 - OpenClaw defaults in the sample secrets file assume a Bonjour-style local host name for Mac-based development.
+- Gemini/OpenClaw code remains in the sample for now, but it is not the primary direction of the project.
 
 ### Success looks like
 
 - Xcode resolves packages successfully
 - The app launches on device
 - Registration completes or iPhone mode is available
-- Live preview appears and Gemini can connect when configured
+- Live preview appears
+- RTMP forwarding is not expected to work on iOS yet
 
-## Android RTMP Ingest and Viewer Setup
+## MediaMTX RTMP Ingest and Viewer Setup
 
-Use this only if you want browser playback or local recording from the Android app.
+This is the core server-side part of EgoFlow. Use it to receive the glasses stream from the app, replay it in the browser, and store recordings locally.
 
 ### Start the ingest server
 
@@ -218,6 +232,10 @@ rtmp://<SERVER_IP>:1935/live/glasses
 
 Then enable RTMP publishing in the app settings.
 
+### iOS status
+
+iOS does not publish to this MediaMTX pipeline yet. When iOS RTMP support is implemented, this same ingest stack is expected to be reused.
+
 ### Verify
 
 - MediaMTX logs show a publisher connection
@@ -227,7 +245,7 @@ Then enable RTMP publishing in the app settings.
 
 ## ngrok / Remote Debug Flow
 
-Use this when the Android device cannot reach your machine directly over LAN, or when you want a public tunnel for OpenClaw and the viewer.
+Use this when the Android device cannot reach your machine directly over LAN, or when you want a public tunnel for the MediaMTX ingest/viewer stack and, if needed, the legacy OpenClaw gateway.
 
 ### Start ngrok
 
@@ -240,7 +258,7 @@ The helper script exposes:
 
 - RTMP ingest on local port `1935`
 - browser viewer on local port `8088`
-- OpenClaw gateway on local `127.0.0.1:18789`
+- OpenClaw gateway on local `127.0.0.1:18789` when that legacy path is in use
 
 Inspect URLs through the script output or `http://127.0.0.1:4040`.
 
@@ -265,10 +283,11 @@ Use this after setup:
 - Placeholder secrets are replaced
 - DAT registration succeeds
 - First live frame appears in the app
-- Gemini connects when a valid API key is present
-- OpenClaw requests succeed when host/token are configured
-- Android only: RTMP publishing connects and MediaMTX shows the stream
-- Android only: the viewer plays the stream and recordings are saved
+- Android: RTMP publishing connects and MediaMTX shows the stream
+- Android: the viewer plays the stream and recordings are saved
+- iOS: local DAT preview works, but server streaming is not implemented yet
+- Legacy only: Gemini connects when a valid API key is present
+- Legacy only: OpenClaw requests succeed when host/token are configured
 
 ## Troubleshooting
 
@@ -307,7 +326,7 @@ Use this after setup:
 
 ## Attribution and License
 
-This repository contains code copied from or adapted from Meta Wearables DAT samples and VisionClaw-derived code. Keep attribution and upstream references aligned with the actual imported sources.
+This repository contains code copied from or adapted from Meta Wearables DAT samples and some VisionClaw-derived code that still remains in the tree. Keep attribution and upstream references aligned with the actual imported sources.
 
 See:
 
