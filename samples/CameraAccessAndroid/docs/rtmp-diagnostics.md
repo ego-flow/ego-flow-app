@@ -3,11 +3,11 @@
 This document diagnoses the main failure modes when the Android app publishes video/audio to an RTMP server and the server stores the stream.
 
 The observations below are based on the current repository state, especially:
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt)
-- [RtmpPublisher.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt)
-- [RtmpAudioRecorder.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpAudioRecorder.kt)
-- [mediamtx.yml](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/server/mediamtx.yml)
-- [save-stream.sh](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/server/save-stream.sh)
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt)
+- [RtmpPublisher.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt)
+- [RtmpAudioRecorder.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpAudioRecorder.kt)
+- [mediamtx.yml](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/server/mediamtx.yml)
+- [save-stream.sh](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/server/save-stream.sh)
 
 ## Critical
 
@@ -17,8 +17,8 @@ Symptoms:
 - Operators assume MediaMTX is recording automatically and chase the wrong component.
 
 Evidence:
-- [mediamtx.yml](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/server/mediamtx.yml#L10) sets `record: no`.
-- Recording is delegated to [save-stream.sh](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/server/save-stream.sh#L12), which runs `ffmpeg -i <rtmp-url> -c copy`.
+- [mediamtx.yml](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/server/mediamtx.yml#L10) sets `record: no`.
+- Recording is delegated to [save-stream.sh](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/server/save-stream.sh#L12), which runs `ffmpeg -i <rtmp-url> -c copy`.
 
 Impact:
 - Storage failures can be misdiagnosed as ingest failures.
@@ -35,15 +35,15 @@ Symptoms:
 - Users must restart streaming manually from the app.
 
 Evidence:
-- [RtmpPublisher.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt#L72) opens a plain socket with `soTimeout = 5_000`.
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L75) and [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L96) treat send/connect failures as terminal and call `stopInternal()`.
+- [RtmpPublisher.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt#L72) opens a plain socket with `soTimeout = 5_000`.
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L75) and [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L96) treat send/connect failures as terminal and call `stopInternal()`.
 
 Impact:
 - A transient outage becomes a full session loss.
 - Long-running unattended recording is not reliable.
 
 What to check:
-- RTMP diagnostics overlay entries from [RtmpDiagnostics.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpDiagnostics.kt#L10).
+- RTMP diagnostics overlay entries from [RtmpDiagnostics.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpDiagnostics.kt#L10).
 - Whether the app logs `Connect failed`, `Audio sample failed`, or `Phone/Glasses frame failed`.
 
 ### 3. Plain RTMP only
@@ -52,7 +52,7 @@ Symptoms:
 - Security review rejects the design for production traffic.
 
 Evidence:
-- [RtmpPublisher.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt#L142) accepts only `rtmp://`.
+- [RtmpPublisher.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt#L142) accepts only `rtmp://`.
 - The socket layer is raw TCP with no TLS negotiation.
 
 Impact:
@@ -71,8 +71,8 @@ Symptoms:
 - Some devices fail to start streaming when microphone permission is denied or the mic is in use by another app.
 
 Evidence:
-- [RtmpAudioRecorder.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpAudioRecorder.kt#L25) starts `AudioRecord`.
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L159) creates an AAC encoder and [RtmpPublisher.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt#L109) sends AAC config/data.
+- [RtmpAudioRecorder.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpAudioRecorder.kt#L25) starts `AudioRecord`.
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L159) creates an AAC encoder and [RtmpPublisher.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpPublisher.kt#L109) sends AAC config/data.
 - Older README text claimed audio was not sent, which means operational expectations may still be wrong.
 
 Impact:
@@ -90,8 +90,8 @@ Symptoms:
 - Muxed files contain both tracks, but alignment gets worse over time.
 
 Evidence:
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L280) computes video PTS from `streamStartTimeNs`.
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L297) computes audio PTS from `audioStartTimeNs`.
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L280) computes video PTS from `streamStartTimeNs`.
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L297) computes audio PTS from `audioStartTimeNs`.
 
 Impact:
 - Initial A/V skew depends on which producer starts first.
@@ -107,7 +107,7 @@ Symptoms:
 - A server restart or RTMP reconnect attempt leaves multiple partial files.
 
 Evidence:
-- [save-stream.sh](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/server/save-stream.sh#L12) performs a single `ffmpeg` ingest with no restart loop, segmentation, or health supervision.
+- [save-stream.sh](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/server/save-stream.sh#L12) performs a single `ffmpeg` ingest with no restart loop, segmentation, or health supervision.
 
 Impact:
 - A single ingest hiccup can end the saved artifact.
@@ -125,7 +125,7 @@ Symptoms:
 - Works on one phone and fails on another.
 
 Evidence:
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L355) selects a hardware H.264 encoder by supported YUV formats.
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L355) selects a hardware H.264 encoder by supported YUV formats.
 - Frame conversion depends on `I420` or `NV12` assumptions before input to `MediaCodec`.
 
 Impact:
@@ -141,9 +141,9 @@ Symptoms:
 - Recordings contain stutter or long visual gaps.
 
 Evidence:
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L207) drops frames if the encoder input buffer is too small.
-- [RtmpStreamer.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L224) does the same for audio chunks.
-- Diagnostics only retain the last 12 entries in [RtmpDiagnostics.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpDiagnostics.kt#L11).
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L207) drops frames if the encoder input buffer is too small.
+- [RtmpStreamer.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpStreamer.kt#L224) does the same for audio chunks.
+- Diagnostics only retain the last 12 entries in [RtmpDiagnostics.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/stream/rtmp/RtmpDiagnostics.kt#L11).
 
 Impact:
 - Intermittent drops may be invisible unless someone is actively watching logs.

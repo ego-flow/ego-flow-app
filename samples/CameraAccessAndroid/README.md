@@ -80,22 +80,22 @@ Use one of the following two environments:
 - A GitHub classic personal access token is set either:
   - in `local.properties` as `github_token=...`, or
   - in the shell as `GITHUB_TOKEN=...`
-- The ingest server code is present at `/home/js1044k/EgoFlow/samples/video-ingest-server`.
+- The ingest server code is present at `/home/js1044k/ego-flow-app/samples/video-ingest-server`.
 
-The Android dependency reads the token in [settings.gradle.kts](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/settings.gradle.kts).
+The Android dependency reads the token in [settings.gradle.kts](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/settings.gradle.kts).
 
 ### 1. Build and run the Android app
 
 From this directory:
 
 ```bash
-cd /home/js1044k/EgoFlow/samples/CameraAccessAndroid
+cd /home/js1044k/ego-flow-app/samples/CameraAccessAndroid
 ./gradlew assembleDebug
 "/mnt/c/Users/Jinsu Kim/AppData/Local/Android/Sdk/platform-tools/adb.exe" install -r app/build/outputs/apk/debug/app-debug.apk
 "/mnt/c/Users/Jinsu Kim/AppData/Local/Android/Sdk/platform-tools/adb.exe" shell am start -n com.meta.wearable.dat.externalsampleapps.cameraaccess/.MainActivity
 ```
 
-If you prefer, [run.sh](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/run.sh) shows the same flow with an explicit `JAVA_HOME` and `adb` path.
+If you prefer, [run.sh](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/run.sh) shows the same flow with an explicit `JAVA_HOME` and `adb` path.
 
 Once the app is running:
 
@@ -107,7 +107,7 @@ Once the app is running:
    - enable `RTMP publishing`
    - set `Publish URL` according to the environment below
 
-The settings UI and placeholders live in [SettingsScreen.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/ui/SettingsScreen.kt), and built-in defaults can be defined in [Secrets.kt.example](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/Secrets.kt.example).
+The settings UI and placeholders live in [SettingsScreen.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/ui/SettingsScreen.kt), and built-in defaults can be defined in [Secrets.kt.example](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/Secrets.kt.example).
 
 ### OpenClaw over ngrok
 
@@ -134,7 +134,7 @@ through the values configured in `Secrets.kt` or the in-app Settings screen.
 From the parent `samples` directory:
 
 ```bash
-cd /home/js1044k/EgoFlow/samples
+cd /home/js1044k/ego-flow-app/samples
 ./start-ngrok.sh
 ```
 
@@ -206,7 +206,7 @@ OpenClaw requires `hooks.token` to be different from `gateway.auth.token`.
 
 Set the values either:
 
-- in [Secrets.kt](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/Secrets.kt), or
+- in [Secrets.kt](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/app/src/main/java/com/meta/wearable/dat/externalsampleapps/cameraaccess/Secrets.kt), or
 - in the app's `Settings > OpenClaw`
 
 If the app already has saved settings, `SettingsManager` will prefer those over `Secrets.kt`. Use `Reset to Defaults` in Settings after editing `Secrets.kt`.
@@ -216,13 +216,13 @@ If the app already has saved settings, `SettingsManager` will prefer those over 
 From the server directory:
 
 ```bash
-cd /home/js1044k/EgoFlow/samples/video-ingest-server
+cd /home/js1044k/ego-flow-app/samples/video-ingest-server
 docker compose up -d
 docker compose ps
 docker compose logs -f
 ```
 
-This stack is defined in [docker-compose.yml](/home/js1044k/EgoFlow/samples/video-ingest-server/docker-compose.yml) and [mediamtx.yml](/home/js1044k/EgoFlow/samples/video-ingest-server/mediamtx.yml). It exposes:
+This stack is defined in [docker-compose.yml](/home/js1044k/ego-flow-app/samples/video-ingest-server/docker-compose.yml) and [mediamtx.yml](/home/js1044k/ego-flow-app/samples/video-ingest-server/mediamtx.yml). It exposes:
 
 - RTMP ingest: local port `1935`
 - HLS endpoint: local port `8888`
@@ -231,7 +231,7 @@ This stack is defined in [docker-compose.yml](/home/js1044k/EgoFlow/samples/vide
 When the app starts publishing to `live/glasses`, recordings are automatically written on this PC under:
 
 ```text
-/home/js1044k/EgoFlow/samples/video-ingest-server/recordings/live/glasses/
+/home/js1044k/ego-flow-app/samples/video-ingest-server/recordings/live/glasses/
 ```
 
 ### 3. Production environment: no ngrok
@@ -276,7 +276,7 @@ Use this when the Android device cannot directly reach this PC, or when you want
 From the parent `samples` directory:
 
 ```bash
-cd /home/js1044k/EgoFlow/samples
+cd /home/js1044k/ego-flow-app/samples
 ./start-ngrok.sh
 ```
 
@@ -291,7 +291,7 @@ The local HLS endpoint on port `8888` still exists through MediaMTX, but it is n
 In another terminal, inspect the tunnel URLs:
 
 ```bash
-cd /home/js1044k/EgoFlow/samples/video-ingest-server
+cd /home/js1044k/ego-flow-app/samples/video-ingest-server
 ./print-ngrok-urls.sh
 ```
 
@@ -344,7 +344,7 @@ For example:
 - SRT is not wired yet. RTMP was chosen because it fits the current Android codebase with no extra native dependency.
 - On free `ngrok` plans, public URLs may change each time you restart `ngrok`.
 - If streaming fails in `Production`, check firewall rules on this PC for ports `1935`, `8088`, and `8888`.
-- A repo-specific failure analysis is documented in [docs/rtmp-diagnostics.md](/home/js1044k/EgoFlow/samples/CameraAccessAndroid/docs/rtmp-diagnostics.md).
+- A repo-specific failure analysis is documented in [docs/rtmp-diagnostics.md](/home/js1044k/ego-flow-app/samples/CameraAccessAndroid/docs/rtmp-diagnostics.md).
 
 ## Troubleshooting
 

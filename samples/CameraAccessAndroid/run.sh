@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /home/js1044k/EgoFlow/samples/CameraAccessAndroid
+cd /home/js1044k/ego-flow-app/samples/CameraAccessAndroid
 
 sed -i 's/\r$//' gradlew
 sed -i '/^org\.gradle\.java\.home=/d' gradle.properties
