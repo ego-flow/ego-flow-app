@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EgoFlow Upload</string>
+    <string name="upload_notification_title">Uploading imported video</string>
+</resources>

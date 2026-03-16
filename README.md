@@ -1,23 +1,44 @@
 # EgoFlow
 
-EgoFlow is a repository of Meta Wearables sample apps adapted for an ego-centric video pipeline: stream camera data from Meta AI glasses through the mobile app, forward it to a MediaMTX server over RTMP, and store or replay the stream in near real time.
+EgoFlow now has two tracks in the repository:
 
-Today, the end-to-end `glasses -> app -> server` pipeline is implemented on Android. iOS is intended to support the same pipeline, but RTMP forwarding and server-side ingest from iOS are not implemented yet.
+- legacy/reference samples for the original `glasses -> live preview -> RTMP -> MediaMTX` flow
+- new rebuild targets for the `glasses -> phone import -> upload queue -> HTTP upload API -> local cleanup` flow
 
-Some `Gemini` and `OpenClaw` integration code is still present because parts of the project were brought over from [VisionClaw](https://github.com/Intent-Lab/VisionClaw). Those paths are not the main focus of EgoFlow and are expected to be removed or reduced over time.
+The rebuild target for phase 1 is `Android + Server`. The new default implementation lives in:
 
-This root README is the main onboarding document. Platform-specific details still live in the sample directories, but a new developer should be able to understand the system and get a first run from here.
+- `samples/glasses-upload-android`
+- `samples/video-upload-server`
+
+The older `samples/CameraAccessAndroid` and `samples/video-ingest-server` projects remain in place as reference implementations and are not the primary rebuild target.
 
 ## Repository Map
 
-- `samples/CameraAccess`: iOS app based on Meta DAT; currently supports device connection and preview flows, with RTMP ingest support planned but not implemented yet
-- `samples/CameraAccessAndroid`: Android app based on Meta DAT; currently implements the main EgoFlow streaming pipeline, including RTMP publishing to MediaMTX
-- `samples/video-ingest-server`: MediaMTX + viewer stack used for RTMP ingest, HLS playback, and recording
+- `samples/glasses-upload-android`: new Android rebuild app for DAT connection status, import watching, upload queueing, and local history
+- `samples/video-upload-server`: new minimal HTTP upload API for imported video files
+- `samples/CameraAccess`: iOS app based on Meta DAT; retained as reference for connection and preview flows
+- `samples/CameraAccessAndroid`: Android RTMP sample retained as a legacy/reference implementation
+- `samples/video-ingest-server`: MediaMTX + viewer stack retained as a legacy/reference ingest stack
 - `samples/start-ngrok.sh`: helper script that exposes RTMP, viewer, and the legacy OpenClaw gateway over ngrok for remote testing
 
 ## End-to-End Pipelines
 
-### 1. Main streaming pipeline
+### 1. Rebuild upload pipeline
+
+1. A Meta AI glasses device connects to the Android app through Meta Wearables DAT.
+1. The Meta AI app imports captured videos onto the phone.
+1. The rebuild Android app watches a configured import directory.
+1. New phone-side videos are added to a persistent upload queue.
+1. The Android app uploads each file to `POST /api/videos`.
+1. On success, the app can delete the imported local file and keep history in its local database.
+
+Current status:
+
+- Android rebuild app: implemented in `samples/glasses-upload-android`
+- Upload server: implemented in `samples/video-upload-server`
+- iOS rebuild path: not started
+
+### 2. Legacy streaming pipeline
 
 1. A Meta AI glasses device connects to the app through Meta Wearables DAT.
 1. The app registers with the glasses via the Meta AI app in Developer Mode.
@@ -31,13 +52,13 @@ Current status:
 - Android: implemented
 - iOS: planned, but RTMP forwarding and MediaMTX ingest integration are not implemented yet
 
-### 2. Local device workflow
+### 3. Local device workflow
 
 1. The app receives frames from Meta glasses through DAT.
 1. The app can render local preview even when RTMP forwarding is not being used.
 1. Platform-specific fallback modes can still be used for local testing and development.
 
-### 3. Legacy assistant pipeline
+### 4. Legacy assistant pipeline
 
 1. The app collects OpenClaw host, port, and gateway token from secrets or in-app settings.
 1. Gemini/OpenClaw bridge code sends requests to the OpenClaw gateway.
