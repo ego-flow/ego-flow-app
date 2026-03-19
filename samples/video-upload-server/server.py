@@ -33,11 +33,19 @@ class VideoUploadHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path != "/api/videos":
+            self.log_event("unknown_post_path", path=self.path)
             self.respond(HTTPStatus.NOT_FOUND, {"message": "not found"})
             return
 
         content_type = self.headers.get("Content-Type", "")
+        self.log_event(
+            "upload_request_received",
+            path=self.path,
+            content_type=content_type or "<missing>",
+            content_length=self.headers.get("Content-Length", "<missing>"),
+        )
         if "multipart/form-data" not in content_type:
+            self.log_event("upload_request_rejected", reason="invalid_content_type")
             self.respond(HTTPStatus.BAD_REQUEST, {"message": "multipart/form-data is required"})
             return
 
@@ -51,17 +59,25 @@ class VideoUploadHandler(BaseHTTPRequestHandler):
                 },
             )
         except Exception as exc:
+            self.log_event("upload_request_rejected", reason="invalid_multipart_payload", error=repr(exc))
             self.respond(HTTPStatus.BAD_REQUEST, {"message": f"invalid multipart payload: {exc}"})
             return
 
         file_field = form["file"] if "file" in form else None
         if file_field is None or not getattr(file_field, "file", None):
+            self.log_event("upload_request_rejected", reason="missing_file_field")
             self.respond(HTTPStatus.BAD_REQUEST, {"message": "file field is required"})
             return
 
         original_name = getattr(file_field, "filename", None) or "upload.bin"
         destination = unique_destination(self.upload_dir, original_name)
         metadata = form.getvalue("metadata")
+        self.log_event(
+            "upload_processing_started",
+            original_name=original_name,
+            destination=str(destination),
+            metadata_present=bool(metadata),
+        )
 
         try:
             ensure_directory(self.upload_dir)
@@ -74,13 +90,28 @@ class VideoUploadHandler(BaseHTTPRequestHandler):
                 metadata_path = destination.with_suffix(destination.suffix + ".json")
                 metadata_path.write_text(json.dumps({"metadata": metadata}, ensure_ascii=True, indent=2))
         except Exception as exc:
+            self.log_event("upload_save_failed", destination=str(destination), error=repr(exc))
             self.respond(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"failed to save upload: {exc}"})
             return
 
+        saved_size = destination.stat().st_size
+        self.log_event(
+            "upload_saved",
+            original_name=original_name,
+            saved_path=str(destination),
+            bytes=saved_size,
+            metadata_present=bool(metadata),
+        )
         self.respond(HTTPStatus.OK, {"message": "success"})
 
     def log_message(self, format: str, *args) -> None:
         sys.stdout.write("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), format % args))
+
+    def log_event(self, event: str, **fields: object) -> None:
+        parts = [event]
+        for key, value in fields.items():
+            parts.append(f"{key}={value!r}")
+        self.log_message("%s", " ".join(parts))
 
     def respond(self, status: HTTPStatus, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
