@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Replaces the blanket android:usesCleartextTraffic="true". Cleartext is denied
+  app-wide and re-enabled only for local development endpoints (emulator host
+  10.0.2.2, loopback). Production / remote EgoFlow backends must be HTTPS.
+
+  To test against a plain-HTTP backend on your LAN, add its host as another
+  <domain> entry below.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

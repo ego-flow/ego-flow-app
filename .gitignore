@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+
+# Android
+samples/CameraAccessAndroid/local.properties
+samples/CameraAccessAndroid/.gradle/
+samples/CameraAccessAndroid/build/
+samples/CameraAccessAndroid/app/build/
+samples/CameraAccessAndroid/app/sample.keystore
+
+# Generated media / local runtime output
+samples/video-ingest-server/recordings/

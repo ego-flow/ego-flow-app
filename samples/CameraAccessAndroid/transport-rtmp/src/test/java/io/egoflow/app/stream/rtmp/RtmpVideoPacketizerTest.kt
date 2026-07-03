@@ -1,0 +1,138 @@
+package io.egoflow.app.stream.rtmp
+
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class RtmpVideoPacketizerTest {
+    @Test
+    fun extractNalUnits_splitsAnnexBFrames() {
+        val annexB =
+            byteArrayOf(
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0x67,
+                0x64,
+                0x00,
+                0x1f,
+                0x00,
+                0x00,
+                0x01,
+                0x68,
+                0x11,
+                0x22,
+            )
+
+        val nalUnits = RtmpVideoPacketizer.extractNalUnits(annexB)
+
+        assertEquals(2, nalUnits.size)
+        assertArrayEquals(byteArrayOf(0x67, 0x64, 0x00, 0x1f), nalUnits[0])
+        assertArrayEquals(byteArrayOf(0x68, 0x11, 0x22), nalUnits[1])
+    }
+
+    @Test
+    fun buildVideoPacket_buildsLegacyAvcPacket() {
+        val packet =
+            RtmpVideoPacketizer.buildVideoPacket(
+                videoCodec = RtmpVideoCodec.H264,
+                annexBData =
+                    byteArrayOf(
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x01,
+                        0x65,
+                        0x55,
+                        0x66,
+                    ),
+                isKeyFrame = true,
+                compositionTimeMs = 0,
+            )
+
+        assertEquals(0x17.toByte(), packet[0])
+        assertEquals(0x01.toByte(), packet[1])
+        assertEquals(12, packet.size)
+        assertEquals(3, packet[8].toInt() and 0xff)
+        assertEquals(0x65.toByte(), packet[9])
+    }
+
+    @Test
+    fun buildVideoPacket_buildsEnhancedHevcPacket() {
+        val packet =
+            RtmpVideoPacketizer.buildVideoPacket(
+                videoCodec = RtmpVideoCodec.H265,
+                annexBData =
+                    byteArrayOf(
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x01,
+                        0x26,
+                        0x01,
+                        0x11,
+                        0x22,
+                    ),
+                isKeyFrame = true,
+                compositionTimeMs = 0,
+            )
+
+        assertEquals(0x93.toByte(), packet[0])
+        assertEquals('h'.code.toByte(), packet[1])
+        assertEquals('v'.code.toByte(), packet[2])
+        assertEquals('c'.code.toByte(), packet[3])
+        assertEquals('1'.code.toByte(), packet[4])
+        assertEquals(13, packet.size)
+        assertEquals(4, packet[8].toInt() and 0xff)
+        assertEquals(0x26.toByte(), packet[9])
+    }
+
+    @Test
+    fun fromPreferenceValue_defaultsToH264() {
+        assertEquals(RtmpVideoCodec.H264, RtmpVideoCodec.fromPreferenceValue("unknown"))
+        assertEquals(RtmpVideoCodec.H265, RtmpVideoCodec.fromPreferenceValue("H265"))
+    }
+
+    @Test
+    fun buildAvcSequenceHeader_embedsSpsPpsWithoutStartCodePrefix() {
+        val sps = byteArrayOf(
+            0x67.toByte(), // NAL header (SPS)
+            0x42.toByte(), // profile_idc (Baseline)
+            0xC0.toByte(), // constraint_set + reserved
+            0x1F.toByte(), // level_idc
+            0x8C.toByte(),
+            0x8D.toByte(),
+        )
+        val pps = byteArrayOf(
+            0x68.toByte(), // NAL header (PPS)
+            0xCE.toByte(),
+            0x3C.toByte(),
+            0x80.toByte(),
+        )
+
+        val header = RtmpVideoPacketizer.buildAvcSequenceHeader(sps, pps)
+
+        assertEquals(0x17.toByte(), header[0])
+        assertEquals(0x00.toByte(), header[1])
+        assertEquals(0x01.toByte(), header[5])          // configurationVersion
+        assertEquals(0x42.toByte(), header[6])          // AVCProfileIndication
+        assertEquals(0xC0.toByte(), header[7])          // profile_compatibility
+        assertEquals(0x1F.toByte(), header[8])          // AVCLevelIndication
+        assertEquals(0xFF.toByte(), header[9])          // lengthSizeMinusOne
+        assertEquals(0xE1.toByte(), header[10])         // numOfSPS (reserved + 1)
+        // SPS length + body
+        assertEquals(sps.size, ((header[11].toInt() and 0xff) shl 8) or (header[12].toInt() and 0xff))
+        val spsBody = header.copyOfRange(13, 13 + sps.size)
+        assertArrayEquals(sps, spsBody)
+        val ppsOffset = 13 + sps.size
+        assertEquals(0x01.toByte(), header[ppsOffset])  // numOfPPS
+        assertEquals(
+            pps.size,
+            ((header[ppsOffset + 1].toInt() and 0xff) shl 8) or (header[ppsOffset + 2].toInt() and 0xff),
+        )
+        val ppsBody = header.copyOfRange(ppsOffset + 3, ppsOffset + 3 + pps.size)
+        assertArrayEquals(pps, ppsBody)
+        assertEquals(16 + sps.size + pps.size, header.size)
+    }
+}
