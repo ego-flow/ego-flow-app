@@ -75,19 +75,23 @@ in its own module. See [`docs/03. project_architecture.md`](../../docs/03.%20pro
    ```properties
    sdk.dir=/path/to/your/Android/sdk
    github_token=YOUR_GITHUB_PAT
+   mwdat_application_id=YOUR_META_WEARABLES_APP_ID
+   mwdat_client_token=YOUR_META_WEARABLES_CLIENT_TOKEN
    ```
 
    - `sdk.dir`: path to your Android SDK installation. Android Studio sets this automatically; for manual builds, find it in **Android Studio > Settings > Android SDK** (the *Android SDK Location* field) or set `ANDROID_HOME` and use that path.
    - `github_token`: a GitHub personal access token (classic) with `read:packages` scope, required to download the Meta Wearables DAT SDK. May instead be supplied as the `GITHUB_TOKEN` environment variable. See [SDK for Android setup](https://wearables.developer.meta.com/docs/getting-started-toolkit/#sdk-for-android-setup).
+   - `mwdat_application_id` / `mwdat_client_token`: app credentials from Meta Wearables Developer Center, injected into the manifest at build time. They may instead be supplied as `MWDAT_APPLICATION_ID` and `MWDAT_CLIENT_TOKEN` environment variables. Do not commit these values.
 1. Click **File** > **Sync Project with Gradle Files**
 1. Click **Run** > **Run...** > **app**
 
 > **There is no `Secrets.kt`.** Runtime configuration (server URL, credentials, transport,
 > repository) is entered in-app and stored in SharedPreferences — nothing is compiled in. The only
-> build-time secrets are `github_token` and, for signed release builds, `keystore.properties`
-> (gitignored; template `keystore.properties.example` with `storeFile`, `storePassword`,
-> `keyAlias`, `keyPassword`). Without it, debug builds use AGP's default debug keystore, and a
-> requested release build (`assembleRelease`/`bundleRelease`) fails instead of signing with a debug key.
+> build-time secrets are `github_token`, `mwdat_application_id`, `mwdat_client_token`, and, for
+> signed release builds, `keystore.properties` (gitignored; template `keystore.properties.example`
+> with `storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Without release signing
+> credentials, debug builds use AGP's default debug keystore, and a requested release build
+> (`assembleRelease`/`bundleRelease`) fails instead of signing with a debug key.
 
 ## Running the app
 

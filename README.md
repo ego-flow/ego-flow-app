@@ -43,10 +43,15 @@ For command-line builds, create `samples/CameraAccessAndroid/local.properties`:
 ```properties
 sdk.dir=/path/to/Android/sdk
 github_token=YOUR_GITHUB_PAT
+mwdat_application_id=YOUR_META_WEARABLES_APP_ID
+mwdat_client_token=YOUR_META_WEARABLES_CLIENT_TOKEN
 ```
 
 The GitHub token can also be provided as `GITHUB_TOKEN`. It is used by
 `settings.gradle.kts` to access `maven.pkg.github.com/facebook/meta-wearables-dat-android`.
+The Meta Wearables credentials can also be provided as `MWDAT_APPLICATION_ID` and
+`MWDAT_CLIENT_TOKEN`; they are injected into the Android manifest at build time and should not be
+committed.
 
 Release signing is optional local configuration. Copy
 `samples/CameraAccessAndroid/keystore.properties.example` to

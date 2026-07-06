@@ -28,6 +28,16 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseSigning = keystoreProperties.getProperty("storeFile") != null
 
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties().apply {
+  if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { load(it) }
+  }
+}
+
+fun localOrEnvProperty(propertyName: String, envName: String, defaultValue: String = ""): String =
+  System.getenv(envName) ?: localProperties.getProperty(propertyName) ?: defaultValue
+
 // Refuse to build a release artifact without real signing credentials instead of
 // silently signing it with a debug key. Guard on the task graph so debug builds
 // (assembleDebug, unit tests) are unaffected; only a requested release
@@ -67,6 +77,10 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }
     resourceConfigurations += listOf("en")
+    manifestPlaceholders["mwdatApplicationId"] =
+      localOrEnvProperty("mwdat_application_id", "MWDAT_APPLICATION_ID", "0")
+    manifestPlaceholders["mwdatClientToken"] =
+      localOrEnvProperty("mwdat_client_token", "MWDAT_CLIENT_TOKEN")
   }
 
   signingConfigs {
