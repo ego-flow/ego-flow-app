@@ -27,6 +27,26 @@ object SettingsManager {
         }.getOrDefault(TransportId.RTMP)
         set(value) = prefs.edit().putString("transportMode", value.name).apply()
 
+    fun recordTransportMode(): TransportId {
+        val current = transportMode
+        return when (current) {
+            TransportId.HTTP -> TransportId.HTTP
+            else -> TransportId.RTMP
+        }
+    }
+
+    fun normalizeRecordTransportMode(): TransportId {
+        val current = transportMode
+        val normalized = when (current) {
+            TransportId.HTTP -> TransportId.HTTP
+            else -> TransportId.RTMP
+        }
+        if (normalized != current) {
+            transportMode = normalized
+        }
+        return normalized
+    }
+
     var rtmpEnabled: Boolean
         get() = prefs.getBoolean("rtmpEnabled", true)
         set(value) = prefs.edit().putBoolean("rtmpEnabled", value).apply()

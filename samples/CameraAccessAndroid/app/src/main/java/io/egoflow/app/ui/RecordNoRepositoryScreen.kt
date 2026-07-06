@@ -25,11 +25,11 @@ import io.egoflow.app.R
 import io.egoflow.app.ui.repo.components.RepoEmptyState
 
 /**
- * Live-tab content shown when the signed-in account has no repositories.
+ * Record-tab content shown when the signed-in account has no repositories.
  *
  * Streaming always publishes into a repository, so with zero repositories
  * there is nothing to start. Rather than render the start screens with
- * dead buttons, the Live tab swaps in this guidance: repositories are
+ * dead buttons, the Record tab swaps in this guidance: repositories are
  * created on the EgoFlow dashboard (web), so the only in-app actions are
  * to re-check after adding one, or jump to the Repositories tab.
  *
@@ -38,7 +38,7 @@ import io.egoflow.app.ui.repo.components.RepoEmptyState
  *   a second load.
  */
 @Composable
-fun LiveNoRepositoryScreen(
+fun RecordNoRepositoryScreen(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     onViewRepositories: () -> Unit,
@@ -52,8 +52,8 @@ fun LiveNoRepositoryScreen(
         verticalArrangement = Arrangement.Center,
     ) {
         RepoEmptyState(
-            title = stringResource(R.string.live_no_repo_title),
-            detail = stringResource(R.string.live_no_repo_description),
+            title = stringResource(R.string.record_no_repo_title),
+            detail = stringResource(R.string.record_no_repo_description),
         )
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -64,14 +64,14 @@ fun LiveNoRepositoryScreen(
         ) {
             PillButton(
                 label = stringResource(
-                    if (isRefreshing) R.string.live_no_repo_refreshing
-                    else R.string.live_no_repo_refresh,
+                    if (isRefreshing) R.string.record_no_repo_refreshing
+                    else R.string.record_no_repo_refresh,
                 ),
                 onClick = onRefresh,
                 enabled = !isRefreshing,
             )
             PillButton(
-                label = stringResource(R.string.live_no_repo_view),
+                label = stringResource(R.string.record_no_repo_view),
                 onClick = onViewRepositories,
                 style = PillButtonStyle.Outlined,
             )

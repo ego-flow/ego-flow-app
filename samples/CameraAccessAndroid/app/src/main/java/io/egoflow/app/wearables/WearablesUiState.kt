@@ -33,7 +33,7 @@ data class WearablesUiState(
     val isSettingsVisible: Boolean = false,
     val isLoggedIn: Boolean = false,
     val isLoginLoading: Boolean = false,
-    val selectedTab: MainTab = MainTab.LIVE,
+    val selectedTab: MainTab = MainTab.RECORD,
     // Full-screen transition overlay shown while a stream is spinning up or
     // tearing down. Driven by WearablesViewModel; cleared once the underlying
     // work completes (and a minimum visible time has elapsed). See
@@ -47,7 +47,7 @@ data class WearablesUiState(
 
 enum class MainTab {
   REPO,
-  LIVE,
+  RECORD,
   SETTINGS,
 }
 

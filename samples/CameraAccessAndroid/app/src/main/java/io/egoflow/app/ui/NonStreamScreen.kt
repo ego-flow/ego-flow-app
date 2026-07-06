@@ -31,10 +31,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -64,7 +64,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Unplug
-import com.composables.icons.lucide.Video
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
@@ -83,6 +82,8 @@ private val UpdateRequiredForeground = Color(0xFF8A4B00)
 fun NonStreamScreen(
     viewModel: WearablesViewModel,
     onRequestWearablesPermission: suspend (Permission) -> PermissionStatus,
+    repository: RecordRepositorySummary?,
+    onOpenRepositories: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -95,7 +96,54 @@ fun NonStreamScreen(
     val context = LocalContext.current
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Disconnect button -- top-right
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .padding(bottom = 132.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Spacer(modifier = Modifier.size(32.dp))
+            GlassesConnectionStatus(isReady = uiState.hasActiveDevice)
+            RecordSettingsPanel(
+                repository = repository,
+                streamingActive = uiState.isStreaming,
+                onOpenRepositories = onOpenRepositories,
+            )
+            if (isUpdateRequired) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    UpdateRequiredBanner(
+                        showFirmware = uiState.isFirmwareUpdateRequired,
+                        showDatApp = uiState.isDatAppUpdateRequired,
+                    )
+                    if (uiState.isFirmwareUpdateRequired) {
+                        PillButton(
+                            label = stringResource(R.string.update_firmware_button_title),
+                            onClick = {
+                                activity?.let { viewModel.openFirmwareUpdate(it) }
+                                    ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    }
+                    if (uiState.isDatAppUpdateRequired) {
+                        PillButton(
+                            label = stringResource(R.string.update_dat_app_button_title),
+                            onClick = {
+                                activity?.let { viewModel.openDATGlassesAppUpdate(it) }
+                                    ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         DisconnectButton(
             onClick = { showDisconnectDialog = true },
             enabled = isDisconnectEnabled,
@@ -104,81 +152,12 @@ fun NonStreamScreen(
                 .padding(top = 16.dp, end = 16.dp),
         )
 
-        // Centered hero icon
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
-            LiveHero(isReady = uiState.hasActiveDevice)
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Bottom CTA
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (isUpdateRequired) {
-                    UpdateRequiredBanner(
-                        showFirmware = uiState.isFirmwareUpdateRequired,
-                        showDatApp = uiState.isDatAppUpdateRequired,
-                    )
-                }
-                if (uiState.isFirmwareUpdateRequired) {
-                    PillButton(
-                        label = stringResource(R.string.update_firmware_button_title),
-                        onClick = {
-                            activity?.let { viewModel.openFirmwareUpdate(it) }
-                                ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
-                        },
-                    )
-                }
-                if (uiState.isDatAppUpdateRequired) {
-                    PillButton(
-                        label = stringResource(R.string.update_dat_app_button_title),
-                        onClick = {
-                            activity?.let { viewModel.openDATGlassesAppUpdate(it) }
-                                ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
-                        },
-                    )
-                }
-                if (uiState.hasActiveDevice) {
-                    PillButton(
-                        label = "Start streaming",
-                        onClick = { viewModel.navigateToStreaming(onRequestWearablesPermission) },
-                        enabled = !isUpdateRequired,
-                    )
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = stringResource(R.string.waiting_for_active_device),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
-                // Phone mode never touches the glasses, so update-required must not gate it.
-                PillButton(
-                    label = "Start on Phone",
-                    onClick = { viewModel.navigateToPhoneMode() },
-                    style = PillButtonStyle.Outlined,
-                )
-            }
-        }
+        RecordStartActions(
+            startGlassesEnabled = uiState.hasActiveDevice && !isUpdateRequired,
+            onStartGlasses = { viewModel.navigateToStreaming(onRequestWearablesPermission) },
+            onStartPhone = { viewModel.navigateToPhoneMode() },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
 
         if (uiState.isGettingStartedSheetVisible) {
             ModalBottomSheet(
@@ -266,12 +245,20 @@ private fun UpdateRequiredBanner(
 }
 
 @Composable
-private fun LiveHero(
+private fun GlassesConnectionStatus(
     isReady: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val transition = rememberInfiniteTransition(label = "live-hero")
+    val statusColors = LocalEgoFlowColors.current
+    val dotColor = if (isReady) statusColors.statusGreen else statusColors.statusYellow
+    val title = if (isReady) "Glasses connected" else "Waiting for glasses"
+    val detail = if (isReady) {
+        "Ready to start recording from your glasses."
+    } else {
+        "Keep your glasses nearby and active before starting."
+    }
+    val cardShape = RoundedCornerShape(16.dp)
+    val transition = rememberInfiniteTransition(label = "glasses-status")
     val pulse by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -282,86 +269,47 @@ private fun LiveHero(
         label = "pulse",
     )
 
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, dotColor.copy(alpha = 0.35f), cardShape)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier = Modifier.size(212.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            // Breathing outer halo
+        Box(modifier = Modifier.size(18.dp), contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .size(212.dp)
-                    .graphicsLayer {
-                        val s = 0.9f + pulse * 0.1f
-                        scaleX = s
-                        scaleY = s
-                        alpha = 0.3f + pulse * 0.4f
-                    }
-                    .clip(CircleShape)
-                    .background(primary.copy(alpha = 0.07f)),
-            )
-            // Static mid ring
-            Box(
-                modifier = Modifier
-                    .size(156.dp)
-                    .clip(CircleShape)
-                    .background(primary.copy(alpha = 0.10f)),
-            )
-            // Inner gradient badge
-            Box(
-                modifier = Modifier
-                    .size(112.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.surface,
-                            ),
-                        ),
-                    )
-                    .border(1.dp, primary.copy(alpha = 0.25f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Lucide.Video,
-                    contentDescription = null,
-                    tint = primary,
-                    modifier = Modifier.size(52.dp),
-                )
-            }
-        }
-
-        // Minimal status chip
-        val statusColors = LocalEgoFlowColors.current
-        val dotColor = if (isReady) statusColors.statusGreen else statusColors.statusYellow
-        val statusText = if (isReady) "Ready to go live" else "Waiting for glasses"
-        Row(
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .graphicsLayer { alpha = 0.5f + pulse * 0.5f }
+                    .size(18.dp)
+                    .graphicsLayer { alpha = 0.2f + pulse * 0.35f }
                     .clip(CircleShape)
                     .background(dotColor),
             )
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(dotColor),
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             Text(
-                text = statusText,
-                style = MaterialTheme.typography.labelLarge.copy(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.3.sp,
+                    fontSize = 15.sp,
                 ),
+            )
+            Text(
+                text = detail,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             )
         }
     }

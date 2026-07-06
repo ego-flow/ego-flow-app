@@ -14,77 +14,54 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.composables.icons.lucide.Lucide
-import com.composables.icons.lucide.Video
 import io.egoflow.app.wearables.WearablesViewModel
 
 @Composable
 fun HomeScreen(
     viewModel: WearablesViewModel,
+    repository: RecordRepositorySummary?,
+    onOpenRepositories: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val activity = LocalActivity.current
     val context = LocalContext.current
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(modifier = Modifier.weight(1f))
-        Box(
-            modifier = Modifier.size(96.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Lucide.Video,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(96.dp),
-            )
-        }
-        Spacer(modifier = Modifier.weight(1f))
-
+    Box(modifier = modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 24.dp)
+                .padding(bottom = 148.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = "You'll continue in the Meta AI app to connect your glasses.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                fontSize = 12.sp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            PillButton(
-                label = "Connect my glasses",
-                onClick = {
-                    activity?.let { viewModel.startRegistration(it) }
-                        ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
-                },
-            )
-            PillButton(
-                label = "Start on Phone",
-                onClick = { viewModel.navigateToPhoneMode() },
-                style = PillButtonStyle.Outlined,
+            RecordSettingsPanel(
+                repository = repository,
+                streamingActive = false,
+                onOpenRepositories = onOpenRepositories,
             )
         }
+
+        RecordStartActions(
+            startGlassesEnabled = true,
+            onStartGlasses = {
+                activity?.let { viewModel.startRegistration(it) }
+                    ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
+            },
+            onStartPhone = { viewModel.navigateToPhoneMode() },
+            modifier = Modifier.align(Alignment.BottomCenter),
+            startGlassesLabel = "Connect my glasses",
+            message = "You'll continue in the Meta AI app to connect your glasses.",
+        )
     }
 }

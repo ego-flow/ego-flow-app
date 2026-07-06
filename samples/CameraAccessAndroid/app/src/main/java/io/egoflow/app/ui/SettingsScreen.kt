@@ -48,14 +48,10 @@ import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.ArrowRight
 import com.composables.icons.lucide.Lucide
-import com.meta.wearable.dat.camera.types.VideoQuality
 import io.egoflow.app.BuildConfig
-import io.egoflow.app.core.transport.api.TransportId
 import io.egoflow.app.settings.AuthPrefs
 import io.egoflow.app.settings.RepoPrefs
 import io.egoflow.app.settings.SettingsManager
-import io.egoflow.app.stream.rtmp.RtmpAudioSource
-import io.egoflow.app.stream.rtmp.RtmpVideoCodec
 import io.egoflow.app.ui.theme.ThemePreference
 
 private const val DISABLED_ALPHA = 0.4f
@@ -71,14 +67,8 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var themeMode by remember { mutableStateOf(SettingsManager.themeMode) }
-    var transportMode by remember { mutableStateOf(SettingsManager.transportMode) }
-    var rtmpEnabled by remember { mutableStateOf(SettingsManager.rtmpEnabled) }
-    var rtmpAudioEnabled by remember { mutableStateOf(SettingsManager.rtmpAudioEnabled) }
-    var audioSource by remember { mutableStateOf(SettingsManager.audioSource) }
-    var rtmpCompressVideo by remember { mutableStateOf(SettingsManager.rtmpCompressVideo) }
-    var rtmpVideoCodec by remember { mutableStateOf(SettingsManager.rtmpVideoCodec) }
+    var publishingEnabled by remember { mutableStateOf(SettingsManager.rtmpEnabled) }
     var rtmpDebugOverlayEnabled by remember { mutableStateOf(SettingsManager.rtmpDebugOverlayEnabled) }
-    var videoQuality by remember { mutableStateOf(SettingsManager.videoQuality) }
     var showResetDialog by remember { mutableStateOf(false) }
     var authDisplayName by remember { mutableStateOf(AuthPrefs.authDisplayName) }
     var serverUrl by remember { mutableStateOf(AuthPrefs.egoFlowApiBaseUrl) }
@@ -86,14 +76,8 @@ fun SettingsScreen(
 
     fun reload() {
         themeMode = SettingsManager.themeMode
-        transportMode = SettingsManager.transportMode
-        rtmpEnabled = SettingsManager.rtmpEnabled
-        rtmpAudioEnabled = SettingsManager.rtmpAudioEnabled
-        audioSource = SettingsManager.audioSource
-        rtmpCompressVideo = SettingsManager.rtmpCompressVideo
-        rtmpVideoCodec = SettingsManager.rtmpVideoCodec
+        publishingEnabled = SettingsManager.rtmpEnabled
         rtmpDebugOverlayEnabled = SettingsManager.rtmpDebugOverlayEnabled
-        videoQuality = SettingsManager.videoQuality
         authDisplayName = AuthPrefs.authDisplayName
         serverUrl = AuthPrefs.egoFlowApiBaseUrl
         repoName = RepoPrefs.egoFlowRepositoryName
@@ -163,141 +147,17 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection(label = "STREAMING") {
-                SettingsCard {
-                    SegmentedColumn(
-                        label = "Video quality",
-                        description = "Glasses only — higher quality uses more battery. The phone camera is fixed at 480x640.",
-                        enabled = !streamingActive,
-                    ) {
-                        SegmentedControl(
-                            options = listOf(
-                                "Low" to VideoQuality.LOW,
-                                "Medium" to VideoQuality.MEDIUM,
-                                "High" to VideoQuality.HIGH,
-                            ),
-                            selected = videoQuality,
-                            onSelected = {
-                                videoQuality = it
-                                SettingsManager.videoQuality = it
-                            },
-                            subLabel = {
-                                when (it) {
-                                    VideoQuality.LOW -> "360x640"
-                                    VideoQuality.MEDIUM -> "504x896"
-                                    VideoQuality.HIGH -> "720x1280"
-                                }
-                            },
-                            enabled = !streamingActive,
-                        )
-                    }
-                    SettingsDivider()
-                    SettingsToggleRow(
-                        label = "Enable publishing",
-                        description = "Send live video to the configured server.",
-                        checked = rtmpEnabled,
-                        onCheckedChange = {
-                            rtmpEnabled = it
-                            SettingsManager.rtmpEnabled = it
-                        },
-                        enabled = !streamingActive,
-                    )
-                    SettingsDivider()
-                    SegmentedColumn(
-                        label = "Publishing protocol",
-                        description = "RTMP streams over TCP. WHIP publishes over WebRTC (video only). " +
-                            "HTTP records on device and uploads the file in chunks after capture (no live playback).",
-                        enabled = !streamingActive && rtmpEnabled,
-                    ) {
-                        SegmentedControl(
-                            options = listOf(
-                                "RTMP" to TransportId.RTMP,
-                                "WHIP" to TransportId.WHIP,
-                                "HTTP" to TransportId.HTTP,
-                            ),
-                            selected = transportMode,
-                            onSelected = {
-                                transportMode = it
-                                SettingsManager.transportMode = it
-                            },
-                            enabled = !streamingActive && rtmpEnabled,
-                        )
-                    }
-                    SettingsDivider()
-                    SettingsToggleRow(
-                        label = "Stream audio",
-                        description = "Capture microphone while streaming. (RTMP only.)",
-                        checked = rtmpAudioEnabled,
-                        onCheckedChange = {
-                            rtmpAudioEnabled = it
-                            SettingsManager.rtmpAudioEnabled = it
-                        },
-                        enabled = !streamingActive && transportMode == TransportId.RTMP,
-                    )
-                    SettingsDivider()
-                    SegmentedColumn(
-                        label = "Audio source",
-                        description = "Auto uses the glasses mic when detected, otherwise the phone.",
-                        enabled = rtmpAudioEnabled && !streamingActive && transportMode == TransportId.RTMP,
-                    ) {
-                        SegmentedControl(
-                            options = listOf(
-                                RtmpAudioSource.AUTO.displayName to RtmpAudioSource.AUTO,
-                                RtmpAudioSource.GLASSES.displayName to RtmpAudioSource.GLASSES,
-                                RtmpAudioSource.PHONE.displayName to RtmpAudioSource.PHONE,
-                            ),
-                            selected = audioSource,
-                            onSelected = {
-                                audioSource = it
-                                SettingsManager.audioSource = it
-                            },
-                            enabled = rtmpAudioEnabled && !streamingActive && transportMode == TransportId.RTMP,
-                        )
-                    }
-                }
-            }
-
             SettingsSection(label = "ADVANCED") {
                 SettingsCard {
-                    // HTTP runs the on-device encoder, so codec choice applies there too;
-                    // WHIP negotiates H.264 over SDP, so it stays hidden. The compress lock
-                    // only matters for RTMP (HTTP forces compression off).
-                    val codecControlEnabled =
-                        !streamingActive &&
-                            transportMode != TransportId.WHIP &&
-                            !(transportMode == TransportId.RTMP && rtmpCompressVideo)
-                    SegmentedColumn(
-                        label = "Video codec",
-                        description = "H.265 reduces bandwidth. WHIP always negotiates H.264.",
-                        enabled = codecControlEnabled,
-                    ) {
-                        SegmentedControl(
-                            options = listOf(
-                                "H.264" to RtmpVideoCodec.H264,
-                                "H.265" to RtmpVideoCodec.H265,
-                            ),
-                            selected = rtmpVideoCodec,
-                            onSelected = {
-                                rtmpVideoCodec = it
-                                SettingsManager.rtmpVideoCodec = it
-                            },
-                            enabled = codecControlEnabled,
-                        )
-                    }
-                    SettingsDivider()
                     SettingsToggleRow(
-                        label = "Compress on device",
-                        description = "Request HEVC frames directly from the glasses. (RTMP only.)",
-                        checked = rtmpCompressVideo,
-                        onCheckedChange = { enabled ->
-                            rtmpCompressVideo = enabled
-                            SettingsManager.rtmpCompressVideo = enabled
-                            if (enabled) {
-                                rtmpVideoCodec = RtmpVideoCodec.H265
-                                SettingsManager.rtmpVideoCodec = RtmpVideoCodec.H265
-                            }
+                        label = "Disable publishing",
+                        description = "Debug only. Stops sending captured video to the configured server.",
+                        checked = !publishingEnabled,
+                        onCheckedChange = { disabled ->
+                            publishingEnabled = !disabled
+                            SettingsManager.rtmpEnabled = !disabled
                         },
-                        enabled = !streamingActive && transportMode == TransportId.RTMP,
+                        enabled = !streamingActive,
                     )
                     SettingsDivider()
                     SettingsToggleRow(

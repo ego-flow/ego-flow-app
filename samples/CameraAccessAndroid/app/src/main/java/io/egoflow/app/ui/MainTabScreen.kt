@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
+import io.egoflow.app.egoflow.RegisteredRepository
 import io.egoflow.app.ui.repo.RepoLoadState
 import io.egoflow.app.ui.repo.RepoScreen
 import io.egoflow.app.ui.repo.components.RepoTopBarActions
@@ -49,11 +50,16 @@ fun MainTabScreen(
     val selectedTab = uiState.selectedTab
     val title = when (selectedTab) {
         MainTab.REPO -> "Repositories"
-        MainTab.LIVE -> "Live"
+        MainTab.RECORD -> "Record"
         MainTab.SETTINGS -> "Settings"
     }
     val repoController = rememberRepoController()
     val repoLoadState by repoController.loadState
+    val activeRepoId by repoController.activeRepoId
+    val activeRepoName by repoController.activeRepoName
+    val activeRepository = remember(repoLoadState, activeRepoId, activeRepoName) {
+        recordRepositorySummary(repoLoadState, activeRepoId, activeRepoName)
+    }
     // Latch the last definitive repository-presence result. Only a positive
     // load (Loaded) is conclusive: a refresh flips loadState back to Loading
     // and a network Error can't prove the account has zero repos, so neither
@@ -95,9 +101,9 @@ fun MainTabScreen(
             when (selectedTab) {
                 MainTab.REPO -> RepoScreen(
                     controller = repoController,
-                    onGoLive = { viewModel.selectTab(MainTab.LIVE) },
+                    onGoLive = { viewModel.selectTab(MainTab.RECORD) },
                 )
-                MainTab.LIVE ->
+                MainTab.RECORD ->
                     when {
                         uiState.isStreaming ->
                             StreamScreen(
@@ -108,7 +114,7 @@ fun MainTabScreen(
                         // there is nothing to start, so guide the user instead of
                         // showing the start screens with dead buttons.
                         hasRepositories == false ->
-                            LiveNoRepositoryScreen(
+                            RecordNoRepositoryScreen(
                                 isRefreshing = repoLoadState is RepoLoadState.Loading,
                                 onRefresh = { repoController.refresh() },
                                 onViewRepositories = { viewModel.selectTab(MainTab.REPO) },
@@ -117,8 +123,14 @@ fun MainTabScreen(
                             NonStreamScreen(
                                 viewModel = viewModel,
                                 onRequestWearablesPermission = onRequestWearablesPermission,
+                                repository = activeRepository,
+                                onOpenRepositories = { viewModel.selectTab(MainTab.REPO) },
                             )
-                        else -> HomeScreen(viewModel = viewModel)
+                        else -> HomeScreen(
+                            viewModel = viewModel,
+                            repository = activeRepository,
+                            onOpenRepositories = { viewModel.selectTab(MainTab.REPO) },
+                        )
                     }
                 MainTab.SETTINGS ->
                     SettingsScreen(
@@ -131,6 +143,35 @@ fun MainTabScreen(
         }
     }
 }
+
+private fun recordRepositorySummary(
+    loadState: RepoLoadState,
+    activeRepoId: String,
+    activeRepoName: String,
+): RecordRepositorySummary? {
+    val repo =
+        when (loadState) {
+            is RepoLoadState.Loaded ->
+                loadState.repos.firstOrNull { it.id == activeRepoId }
+                    ?: if (activeRepoId.isBlank()) loadState.repos.firstOrNull() else null
+            is RepoLoadState.Error -> loadState.cached.firstOrNull { it.id == activeRepoId }
+            RepoLoadState.Loading -> null
+        }
+    if (repo != null) {
+        return repo.toRecordRepositorySummary(isCached = loadState is RepoLoadState.Error)
+    }
+    return activeRepoName.trim().takeIf { it.isNotBlank() }?.let {
+        RecordRepositorySummary(displayName = it)
+    }
+}
+
+private fun RegisteredRepository.toRecordRepositorySummary(isCached: Boolean): RecordRepositorySummary =
+    RecordRepositorySummary(
+        displayName = "$ownerId/$name",
+        visibility = visibility,
+        role = myRole,
+        isCached = isCached,
+    )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -192,10 +233,10 @@ private fun EgoFlowNavigationBar(
             colors = itemColors,
         )
         NavigationBarItem(
-            selected = selectedTab == MainTab.LIVE,
-            onClick = { onTabSelected(MainTab.LIVE) },
-            icon = { Icon(Lucide.Video, contentDescription = "Live") },
-            label = { Text("Live") },
+            selected = selectedTab == MainTab.RECORD,
+            onClick = { onTabSelected(MainTab.RECORD) },
+            icon = { Icon(Lucide.Video, contentDescription = "Record") },
+            label = { Text("Record") },
             colors = itemColors,
         )
         NavigationBarItem(

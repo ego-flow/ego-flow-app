@@ -23,12 +23,12 @@
     <string name="stream_transition_starting" description="Shown on the loading overlay while a stream is starting">Starting stream…</string>
     <string name="stream_transition_stopping" description="Shown on the loading overlay while a stream is stopping">Stopping stream…</string>
 
-    <!-- Live tab: no repository state -->
-    <string name="live_no_repo_title" description="Title shown on the Live tab when the account has no repositories">No repository yet</string>
-    <string name="live_no_repo_description" description="Guidance shown on the Live tab when the account has no repositories">Add a repository from the EgoFlow dashboard, then refresh to start streaming.</string>
-    <string name="live_no_repo_refresh" description="Button that re-checks for repositories">Refresh</string>
-    <string name="live_no_repo_refreshing" description="Refresh button label while a check is in progress">Refreshing…</string>
-    <string name="live_no_repo_view" description="Button that opens the Repositories tab">View repositories</string>
+    <!-- Record tab: no repository state -->
+    <string name="record_no_repo_title" description="Title shown on the Record tab when the account has no repositories">No repository yet</string>
+    <string name="record_no_repo_description" description="Guidance shown on the Record tab when the account has no repositories">Add a repository from the EgoFlow dashboard, then refresh to start streaming.</string>
+    <string name="record_no_repo_refresh" description="Button that re-checks for repositories">Refresh</string>
+    <string name="record_no_repo_refreshing" description="Refresh button label while a check is in progress">Refreshing…</string>
+    <string name="record_no_repo_view" description="Button that opens the Repositories tab">View repositories</string>
 
     <!-- SharePhotoDialog -->
     <string name="photo_captured" description="Photo Captured">Photo Captured</string>
@@ -42,7 +42,7 @@
     <string name="getting_started_step_repo_title" description="Step 1 title: choose a repository">Pick a repository</string>
     <string name="getting_started_step_repo_desc" description="Step 1 description">Choose one on the Repo tab.</string>
     <string name="getting_started_step_live_title" description="Step 2 title: go live">Go live</string>
-    <string name="getting_started_step_live_desc" description="Step 2 description">Tap Start streaming on the Live tab.</string>
+    <string name="getting_started_step_live_desc" description="Step 2 description">Tap Start streaming on the Record tab.</string>
     <string name="getting_started_step_photo_title" description="Step 3 title: capture photos">Capture photos</string>
     <string name="getting_started_step_photo_desc" description="Step 3 description">Tap the shutter while live.</string>
     <string name="getting_started_continue" description="Continue button">Got it</string>

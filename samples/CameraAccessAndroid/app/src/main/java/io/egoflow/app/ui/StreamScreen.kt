@@ -143,7 +143,7 @@ fun StreamScreen(
         }
 
         // Top overlays. No statusBarsPadding here -- the enclosing
-        // MainTabScreen Scaffold now keeps the Live top bar visible and
+        // MainTabScreen Scaffold now keeps the Record top bar visible and
         // its innerPadding already offsets us below the status bar.
         Row(
             modifier = Modifier
