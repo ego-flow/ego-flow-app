@@ -66,10 +66,11 @@ class RepoController internal constructor(
     }
 
     fun selectRepo(repo: RegisteredRepository) {
+        val displayName = repo.displayName
         activeRepoId.value = repo.id
-        activeRepoName.value = repo.name
+        activeRepoName.value = displayName
         RepoPrefs.egoFlowRepositoryId = repo.id.trim()
-        RepoPrefs.egoFlowRepositoryName = repo.name.trim()
+        RepoPrefs.egoFlowRepositoryName = displayName.trim()
     }
 
     private fun currentRepos(): List<RegisteredRepository> =
@@ -83,9 +84,10 @@ class RepoController internal constructor(
         if (repos.isEmpty()) return
         val match = repos.firstOrNull { it.id == activeRepoId.value }
         if (match != null) {
-            if (activeRepoName.value.isBlank()) {
-                activeRepoName.value = match.name
-                RepoPrefs.egoFlowRepositoryName = match.name.trim()
+            val displayName = match.displayName
+            if (activeRepoName.value != displayName) {
+                activeRepoName.value = displayName
+                RepoPrefs.egoFlowRepositoryName = displayName.trim()
             }
             return
         }

@@ -63,6 +63,7 @@ fun SettingsScreen(
     onThemeChanged: (ThemePreference) -> Unit = {},
     onOpenMicDiagnostics: () -> Unit = {},
     onBack: (() -> Unit)? = null,
+    repositoryDisplayName: String? = null,
     streamingActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -72,7 +73,8 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var authDisplayName by remember { mutableStateOf(AuthPrefs.authDisplayName) }
     var serverUrl by remember { mutableStateOf(AuthPrefs.egoFlowApiBaseUrl) }
-    var repoName by remember { mutableStateOf(RepoPrefs.egoFlowRepositoryName) }
+    val selectedRepositoryName =
+        repositoryDisplayName?.takeIf { it.isNotBlank() } ?: RepoPrefs.egoFlowRepositoryName
 
     fun reload() {
         themeMode = SettingsManager.themeMode
@@ -80,7 +82,6 @@ fun SettingsScreen(
         rtmpDebugOverlayEnabled = SettingsManager.rtmpDebugOverlayEnabled
         authDisplayName = AuthPrefs.authDisplayName
         serverUrl = AuthPrefs.egoFlowApiBaseUrl
-        repoName = RepoPrefs.egoFlowRepositoryName
     }
 
     Scaffold(
@@ -117,7 +118,10 @@ fun SettingsScreen(
                 SettingsCard {
                     ConnectionRow(label = "SERVER", value = serverUrl.ifBlank { "Not configured" })
                     SettingsDivider()
-                    ConnectionRow(label = "REPOSITORY", value = repoName.ifBlank { "None selected" })
+                    ConnectionRow(
+                        label = "REPOSITORY",
+                        value = selectedRepositoryName.ifBlank { "None selected" },
+                    )
                 }
             }
 

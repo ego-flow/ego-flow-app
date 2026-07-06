@@ -32,6 +32,7 @@ import com.meta.wearable.dat.core.types.PermissionStatus
 import io.egoflow.app.egoflow.RegisteredRepository
 import io.egoflow.app.ui.repo.RepoLoadState
 import io.egoflow.app.ui.repo.RepoScreen
+import io.egoflow.app.ui.repo.displayName
 import io.egoflow.app.ui.repo.components.RepoTopBarActions
 import io.egoflow.app.ui.repo.rememberRepoController
 import io.egoflow.app.ui.theme.ThemePreference
@@ -137,6 +138,7 @@ fun MainTabScreen(
                         onLogout = { viewModel.logout() },
                         onThemeChanged = onThemeChanged,
                         onOpenMicDiagnostics = { showMicDiagnostics = true },
+                        repositoryDisplayName = activeRepository?.displayName,
                         streamingActive = uiState.isStreaming,
                     )
             }
@@ -167,7 +169,7 @@ private fun recordRepositorySummary(
 
 private fun RegisteredRepository.toRecordRepositorySummary(isCached: Boolean): RecordRepositorySummary =
     RecordRepositorySummary(
-        displayName = "$ownerId/$name",
+        displayName = displayName,
         visibility = visibility,
         role = myRole,
         isCached = isCached,

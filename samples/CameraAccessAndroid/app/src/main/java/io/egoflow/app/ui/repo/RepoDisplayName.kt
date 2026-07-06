@@ -1,4 +1,4 @@
-package io.egoflow.app.ui.repo.components
+package io.egoflow.app.ui.repo
 
 import io.egoflow.app.egoflow.RegisteredRepository
 

@@ -31,6 +31,7 @@ import com.composables.icons.lucide.Lock
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Wrench
 import io.egoflow.app.egoflow.RegisteredRepository
+import io.egoflow.app.ui.repo.displayName
 
 @Composable
 fun ActiveRepoCard(
