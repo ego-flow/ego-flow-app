@@ -94,7 +94,7 @@ fun ActiveRepoCard(
                 )
             }
             Text(
-                text = repo.name,
+                text = repo.displayName,
                 color = cardContent,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleMedium.copy(

@@ -57,7 +57,7 @@ fun RepoListCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = repo.name,
+                text = repo.displayName,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall.copy(
