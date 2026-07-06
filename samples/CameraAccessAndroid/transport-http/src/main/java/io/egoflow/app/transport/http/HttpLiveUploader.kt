@@ -7,9 +7,9 @@
  *   start():   register(HTTP) → publish-ticket → /start (consumes ticket, PENDING→
  *              STREAMING) — then a send loop begins draining queued segments.
  *   enqueue(): the recorder feeds init segment + each moof/mdat fragment here.
- *   /chunks:   the send loop coalesces queued bytes (>=TARGET_CHUNK, or a <=FLUSH_MS
- *              heartbeat so the server's 10s idle timeout never fires) and POSTs them
- *              in order (sequence 0.., offset = cumulative bytes).
+ *   /chunks:   the send loop coalesces queued bytes (>=TARGET_CHUNK, <=FLUSH_MS
+ *              idle heartbeat, or <=MAX_CHUNK_INTERVAL_MS since the last chunk send)
+ *              and POSTs them in order (sequence 0.., offset = cumulative bytes).
  *   finishAndAwait(): drains the queue, POSTs /finish (total_bytes == bytes sent).
  *
  * Runs on its OWN process-lifetime coroutine scope (NOT a viewModelScope): the final
@@ -50,11 +50,14 @@ class HttpLiveUploader(
 
         // Coalesce queued segment bytes up to this before POSTing (well under the
         // server's 64 MB per-chunk cap).
-        private const val TARGET_CHUNK = 256 * 1024
+        private const val TARGET_CHUNK = 128 * 1024
 
         // Heartbeat: flush whatever is buffered at least this often so the server's
         // 10s idle reconcile never closes a live session mid-capture.
         private const val FLUSH_MS = 3_000L
+
+        // Force buffered bytes out even if segments continue arriving below TARGET_CHUNK.
+        private const val MAX_CHUNK_INTERVAL_MS = 5_000L
 
         // Bounded backlog (segments). Caps memory if the uplink lags the encoder.
         private const val QUEUE_CAPACITY = 64
@@ -115,20 +118,38 @@ class HttpLiveUploader(
 
     private suspend fun runSendLoop() {
         val agg = ByteArrayOutputStream()
+        var lastChunkSentAtMs = nowMs()
+        fun flushBuffered() {
+            lastChunkSentAtMs = nowMs()
+            sendChunk(agg)
+        }
         try {
             while (true) {
-                val received = withTimeoutOrNull(FLUSH_MS) { queue.receiveCatching() }
+                val timeoutMs = if (agg.size() > 0) {
+                    val elapsedSinceLastChunk = nowMs() - lastChunkSentAtMs
+                    minOf(FLUSH_MS, (MAX_CHUNK_INTERVAL_MS - elapsedSinceLastChunk).coerceAtLeast(0L))
+                } else {
+                    FLUSH_MS
+                }
+                val received = if (timeoutMs == 0L) {
+                    null
+                } else {
+                    withTimeoutOrNull(timeoutMs) { queue.receiveCatching() }
+                }
                 if (received == null) {
-                    // Heartbeat tick: flush whatever we have so the session stays alive.
-                    if (agg.size() > 0) sendChunk(agg)
+                    // Heartbeat tick or max-send-interval deadline: flush whatever we have.
+                    if (agg.size() > 0) flushBuffered()
                     continue
                 }
                 val segment = received.getOrNull()
                     ?: break // queue closed and drained
                 agg.write(segment)
-                if (agg.size() >= TARGET_CHUNK) sendChunk(agg)
+                val elapsedSinceLastChunk = nowMs() - lastChunkSentAtMs
+                if (agg.size() >= TARGET_CHUNK || elapsedSinceLastChunk >= MAX_CHUNK_INTERVAL_MS) {
+                    flushBuffered()
+                }
             }
-            if (agg.size() > 0) sendChunk(agg)
+            if (agg.size() > 0) flushBuffered()
             if (offset > 0) {
                 backend.httpStreamFinish(token, recordingSessionId, offset)
                 Log.d(TAG, "Live upload finished: $offset bytes in $sequence chunks")
@@ -144,6 +165,8 @@ class HttpLiveUploader(
             Log.w(TAG, "Live upload aborted after $offset bytes", e)
         }
     }
+
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000L
 
     // POST the accumulated bytes as one /chunks call and reset the accumulator.
     private fun sendChunk(agg: ByteArrayOutputStream) {
