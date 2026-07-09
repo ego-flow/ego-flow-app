@@ -14,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,20 +30,22 @@ fun PillButton(
     enabled: Boolean = true,
 ) {
     val shape = RoundedCornerShape(28.dp)
-    val bg = when (style) {
+    val enabledBg = when (style) {
         PillButtonStyle.Primary -> MaterialTheme.colorScheme.primary
         PillButtonStyle.Outlined -> MaterialTheme.colorScheme.surface
         PillButtonStyle.Destructive -> MaterialTheme.colorScheme.error
     }
-    val fg = when (style) {
+    val enabledFg = when (style) {
         PillButtonStyle.Primary -> MaterialTheme.colorScheme.onPrimary
         PillButtonStyle.Outlined -> MaterialTheme.colorScheme.onSurface
         PillButtonStyle.Destructive -> androidx.compose.ui.graphics.Color.White
     }
-    val borderStroke = if (style == PillButtonStyle.Outlined) {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    } else {
-        null
+    val bg = if (enabled) enabledBg else MaterialTheme.colorScheme.surfaceVariant
+    val fg = if (enabled) enabledFg else MaterialTheme.colorScheme.onSurfaceVariant
+    val borderStroke = when {
+        !enabled -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        style == PillButtonStyle.Outlined -> BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        else -> null
     }
 
     Box(
@@ -54,7 +55,6 @@ fun PillButton(
             .background(bg)
             .let { if (borderStroke != null) it.border(borderStroke, shape) else it }
             .clickable(enabled = enabled, onClick = onClick)
-            .alpha(if (enabled) 1f else 0.5f)
             .padding(PaddingValues(horizontal = 16.dp, vertical = 14.dp)),
         contentAlignment = Alignment.Center,
     ) {
