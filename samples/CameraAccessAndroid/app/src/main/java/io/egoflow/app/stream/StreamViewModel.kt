@@ -332,9 +332,21 @@ class StreamViewModel(
             stateJob =
                 viewModelScope.launch {
                   var prevStreamState: StreamState? = null
+                  var hasObservedActiveStreamLifecycle = false
                   addedStream.state.collect { current ->
                     Log.i(TAG, "StreamState transition: $prevStreamState -> $current")
                     prevStreamState = current
+                    val terminalState = current == StreamState.STOPPED || current == StreamState.CLOSED
+                    if (!hasObservedActiveStreamLifecycle && terminalState) {
+                      Log.d(
+                          TAG,
+                          "Ignoring initial StreamState $current before the stream reaches STARTING/STREAMING",
+                      )
+                      return@collect
+                    }
+                    if (current == StreamState.STARTING || current == StreamState.STREAMING) {
+                      hasObservedActiveStreamLifecycle = true
+                    }
                     _uiState.update {
                       val startedAt =
                           if (current == StreamState.STREAMING && it.streamingStartedAtMs == null) {
@@ -350,7 +362,7 @@ class StreamViewModel(
                     if (current == StreamState.STREAMING && !SettingsManager.rtmpEnabled) {
                       wearablesViewModel.onStreamStarted()
                     }
-                    if (current == StreamState.STOPPED || current == StreamState.CLOSED) {
+                    if (terminalState) {
                       // The glasses ended the video stream on their side (folded, taken off,
                       // thermal/critical stream error, etc.). Unlike the other glasses-stop
                       // paths this carries no DeviceSessionError, so surface a reason here ourselves
@@ -586,6 +598,7 @@ class StreamViewModel(
       reason: StopReason = StopReason.USER_STOP,
       notifyOnSuccess: Boolean = false,
   ) {
+    Log.i(TAG, "stopStream requested reason=$reason notifyOnSuccess=$notifyOnSuccess")
     stopRequested = true
     transportSessionJob?.cancel()
     fpsSamplerJob?.cancel()
