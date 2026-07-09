@@ -13,7 +13,10 @@ import android.Manifest.permission.BLUETOOTH
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.Manifest.permission.CAMERA
 import android.Manifest.permission.INTERNET
+import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.RECORD_AUDIO
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -26,6 +29,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
@@ -45,16 +49,35 @@ import kotlinx.coroutines.sync.withLock
 class MainActivity : ComponentActivity() {
   companion object {
     // Include phone-camera and RTMP audio permissions used by EgoFlow additions.
-    val PERMISSIONS: Array<String> = arrayOf(
+    private val REQUIRED_PERMISSIONS: Array<String> = arrayOf(
         BLUETOOTH, BLUETOOTH_CONNECT, INTERNET, RECORD_AUDIO, CAMERA,
     )
+
+    val PERMISSIONS: Array<String>
+      get() =
+          REQUIRED_PERMISSIONS +
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(POST_NOTIFICATIONS)
+              } else {
+                emptyArray()
+              }
   }
 
   val viewModel: WearablesViewModel by viewModels()
 
   private val permissionCheckLauncher =
       registerForActivityResult(RequestMultiplePermissions()) { permissionsResult ->
-        viewModel.onPermissionsResult(permissionsResult) {
+        viewModel.onNotificationPermissionResult(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                permissionsResult[POST_NOTIFICATIONS] == true,
+        )
+        val requiredPermissionsResult =
+            REQUIRED_PERMISSIONS.associateWith { permission ->
+              permissionsResult[permission] == true ||
+                  ContextCompat.checkSelfPermission(this, permission) ==
+                      PackageManager.PERMISSION_GRANTED
+            }
+        viewModel.onPermissionsResult(requiredPermissionsResult) {
           Wearables.initialize(this)
         }
       }

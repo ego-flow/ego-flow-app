@@ -239,7 +239,11 @@ class StreamViewModel(
     sessionStateJob?.cancel()
     sessionErrorJob?.cancel()
 
-    StreamingService.start(getApplication())
+    StreamingService.start(
+        context = getApplication(),
+        source = StreamingSource.GLASSES,
+        transportMode = streamingServiceTransportMode(SettingsManager.transportMode),
+    )
 
     _uiState.update { it.copy(streamingMode = StreamingMode.GLASSES) }
 
@@ -497,6 +501,11 @@ class StreamViewModel(
           streamingStartedAtMs = SystemClock.elapsedRealtime(),
       )
     }
+    StreamingService.start(
+        context = getApplication(),
+        source = StreamingSource.PHONE,
+        transportMode = streamingServiceTransportMode(SettingsManager.transportMode),
+    )
     startTransportSession()
     startFpsSampler()
     manager.start(lifecycleOwner)
@@ -550,6 +559,9 @@ class StreamViewModel(
         else -> SettingsManager.rtmpVideoCodec.toCoreCodec()
       }
 
+  private fun streamingServiceTransportMode(mode: TransportId): TransportId =
+      if (SettingsManager.rtmpEnabled) mode else TransportId.RTMP
+
   // [Input/output FPS sampler]
   // Reads the inbound and transport-side cumulative counters once per
   // second, computes deltas, and pushes the derived FPS into UI state.
@@ -599,6 +611,12 @@ class StreamViewModel(
       notifyOnSuccess: Boolean = false,
   ) {
     Log.i(TAG, "stopStream requested reason=$reason notifyOnSuccess=$notifyOnSuccess")
+    val serviceSource =
+        when (_uiState.value.streamingMode) {
+          StreamingMode.GLASSES -> StreamingSource.GLASSES
+          StreamingMode.PHONE -> StreamingSource.PHONE
+        }
+    val serviceTransportMode = streamingServiceTransportMode(builtTransportMode)
     stopRequested = true
     transportSessionJob?.cancel()
     fpsSamplerJob?.cancel()
@@ -638,7 +656,11 @@ class StreamViewModel(
             wearablesViewModel.setRecentError("Failed to stop transport: ${e.message}")
             false
           }
-      StreamingService.stop(getApplication())
+      StreamingService.stop(
+          context = getApplication(),
+          source = serviceSource,
+          transportMode = serviceTransportMode,
+      )
       if (notifyOnSuccess && stopOk) {
         wearablesViewModel.setRecentSuccess("Streaming stopped successfully.")
       }

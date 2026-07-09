@@ -15,6 +15,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.egoflow.app.MainActivity
 import io.egoflow.app.R
+import io.egoflow.app.core.transport.api.TransportId
+
+enum class StreamingSource {
+  GLASSES,
+  PHONE,
+}
 
 /**
  * Foreground service that keeps the camera streaming alive when the screen is locked
@@ -33,15 +39,21 @@ class StreamingService : Service() {
   companion object {
     private const val TAG = "StreamingService"
     private const val CHANNEL_ID = "streaming_channel"
-    private const val CHANNEL_NAME = "Camera Streaming"
+    private const val CHANNEL_NAME = "EgoFlow Streaming"
     private const val NOTIFICATION_ID = 1001
     private const val WAKELOCK_TAG = "EgoFlow::StreamingWakeLock"
     private const val ACTION_STOP =
         "io.egoflow.app.stream.ACTION_STOP"
+    private const val EXTRA_SOURCE = "io.egoflow.app.stream.EXTRA_SOURCE"
+    private const val EXTRA_TRANSPORT_MODE = "io.egoflow.app.stream.EXTRA_TRANSPORT_MODE"
 
-    fun start(context: Context) {
+    fun start(context: Context, source: StreamingSource, transportMode: TransportId) {
       val intent =
-          Intent(context, StreamingService::class.java).apply { `package` = context.packageName }
+          Intent(context, StreamingService::class.java).apply {
+            `package` = context.packageName
+            putExtra(EXTRA_SOURCE, source.name)
+            putExtra(EXTRA_TRANSPORT_MODE, transportMode.name)
+          }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(intent)
       } else {
@@ -49,7 +61,11 @@ class StreamingService : Service() {
       }
     }
 
-    fun stop(context: Context) {
+    fun stop(
+        context: Context,
+        source: StreamingSource,
+        transportMode: TransportId,
+    ) {
       // Route stop requests through onStartCommand instead of stopService so the service always
       // promotes to foreground before tearing itself down. Calling stopService while the service
       // is still in the post-startForegroundService grace window causes Android to throw
@@ -58,6 +74,8 @@ class StreamingService : Service() {
           Intent(context, StreamingService::class.java).apply {
             `package` = context.packageName
             action = ACTION_STOP
+            putExtra(EXTRA_SOURCE, source.name)
+            putExtra(EXTRA_TRANSPORT_MODE, transportMode.name)
           }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(intent)
@@ -79,16 +97,18 @@ class StreamingService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     Log.d(TAG, "Service started action=${intent?.action}")
+    val source = sourceFromIntent(intent)
+    val transportMode = transportModeFromIntent(intent)
 
     // Always promote to foreground first -- this is the single contract the platform enforces
     // within the post-startForegroundService grace window. Deferring this call for any reason
     // (including a pending stop) triggers ForegroundServiceDidNotStartInTimeException.
-    val notification = createNotification("Streaming from your glasses...")
+    val notification = createNotification(notificationText(source, transportMode, intent?.action))
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       startForeground(
           NOTIFICATION_ID,
           notification,
-          ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+          foregroundServiceType(source, transportMode),
       )
     } else {
       startForeground(NOTIFICATION_ID, notification)
@@ -139,12 +159,50 @@ class StreamingService : Service() {
           PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
       )
 
+  private fun sourceFromIntent(intent: Intent?): StreamingSource =
+      intent
+          ?.getStringExtra(EXTRA_SOURCE)
+          ?.let { value -> runCatching { StreamingSource.valueOf(value) }.getOrNull() }
+          ?: StreamingSource.GLASSES
+
+  private fun transportModeFromIntent(intent: Intent?): TransportId =
+      intent
+          ?.getStringExtra(EXTRA_TRANSPORT_MODE)
+          ?.let { value -> runCatching { TransportId.valueOf(value) }.getOrNull() }
+          ?: TransportId.RTMP
+
+  private fun notificationText(
+      source: StreamingSource,
+      transportMode: TransportId,
+      action: String?,
+  ): String =
+      when {
+        action == ACTION_STOP && transportMode == TransportId.HTTP -> "Finishing upload..."
+        action == ACTION_STOP -> "Finishing stream..."
+        source == StreamingSource.PHONE -> "Streaming from your phone camera"
+        else -> "Streaming from your glasses"
+      }
+
+  private fun foregroundServiceType(source: StreamingSource, transportMode: TransportId): Int {
+    val captureType =
+        when (source) {
+          StreamingSource.GLASSES -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+          StreamingSource.PHONE -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        }
+    return if (transportMode == TransportId.HTTP) {
+      captureType or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+    } else {
+      captureType
+    }
+  }
+
   private fun createNotification(text: String): Notification =
       NotificationCompat.Builder(this, CHANNEL_ID)
-          .setContentTitle("Camera Streaming")
+          .setContentTitle("EgoFlow streaming")
           .setContentText(text)
-          .setSmallIcon(R.mipmap.ic_launcher_foreground)
+          .setSmallIcon(R.drawable.ic_stat_streaming)
           .setOngoing(true)
+          .setOnlyAlertOnce(true)
           .setContentIntent(contentPendingIntent())
           .setPriority(NotificationCompat.PRIORITY_LOW)
           .setCategory(NotificationCompat.CATEGORY_SERVICE)

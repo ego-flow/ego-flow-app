@@ -73,6 +73,7 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
   private var transitionTimerJob: Job? = null
   private var transitionMinElapsed = false
   private var transitionWorkDone = false
+  private var notificationPermissionWarningShown = false
   // A terminal failure observed while a transition overlay is up. When set, a
   // STARTING transition resolves by returning to device selection (instead of
   // staying on the stream screen) once the min-visible timer elapses -- so a
@@ -329,6 +330,14 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
                 "Allow All Permissions (Bluetooth, Bluetooth Connect, Internet, Microphone, Camera)",
         )
       }
+    }
+  }
+
+  fun onNotificationPermissionResult(granted: Boolean) {
+    _uiState.update { it.copy(hasNotificationPermission = granted) }
+    if (!granted && !notificationPermissionWarningShown) {
+      notificationPermissionWarningShown = true
+      setRecentError("Allow notifications in system settings to see active streaming status.")
     }
   }
 
