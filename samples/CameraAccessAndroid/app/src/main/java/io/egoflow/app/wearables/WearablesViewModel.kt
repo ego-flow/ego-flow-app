@@ -327,7 +327,7 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
       _uiState.update {
         it.copy(
             recentError =
-                "Allow All Permissions (Bluetooth, Bluetooth Connect, Internet, Microphone, Camera)",
+                "Allow camera, microphone, and Bluetooth permissions to continue.",
         )
       }
     }

@@ -9,10 +9,8 @@
 
 package io.egoflow.app
 
-import android.Manifest.permission.BLUETOOTH
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.Manifest.permission.CAMERA
-import android.Manifest.permission.INTERNET
 import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.RECORD_AUDIO
 import android.content.pm.PackageManager
@@ -37,6 +35,9 @@ import io.egoflow.app.settings.AuthPrefs
 import io.egoflow.app.settings.RepoPrefs
 import io.egoflow.app.settings.SettingsManager
 import io.egoflow.app.ui.CameraAccessScaffold
+import io.egoflow.app.ui.PermissionIntroItem
+import io.egoflow.app.ui.PermissionIntroScreen
+import io.egoflow.app.ui.PermissionIntroType
 import io.egoflow.app.ui.theme.EgoFlowTheme
 import io.egoflow.app.ui.theme.ThemePreference
 import io.egoflow.app.wearables.WearablesViewModel
@@ -46,41 +47,85 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+private data class RuntimePermissionDisclosure(
+    val permission: String,
+    val type: PermissionIntroType,
+    val required: Boolean,
+)
+
+private data class PermissionGateUiState(
+    val showIntro: Boolean = false,
+    val introItems: List<PermissionIntroItem> = emptyList(),
+    val requestPermissions: List<String> = emptyList(),
+    val canContinueWithoutNotifications: Boolean = false,
+)
+
 class MainActivity : ComponentActivity() {
   companion object {
-    // Include phone-camera and RTMP audio permissions used by EgoFlow additions.
-    private val REQUIRED_PERMISSIONS: Array<String> = arrayOf(
-        BLUETOOTH, BLUETOOTH_CONNECT, INTERNET, RECORD_AUDIO, CAMERA,
-    )
+    private val REQUIRED_PERMISSION_DISCLOSURES =
+        listOf(
+            RuntimePermissionDisclosure(CAMERA, PermissionIntroType.CAMERA, required = true),
+            RuntimePermissionDisclosure(
+                RECORD_AUDIO,
+                PermissionIntroType.MICROPHONE,
+                required = true,
+            ),
+            RuntimePermissionDisclosure(
+                BLUETOOTH_CONNECT,
+                PermissionIntroType.BLUETOOTH,
+                required = true,
+            ),
+        )
 
-    val PERMISSIONS: Array<String>
+    private val OPTIONAL_PERMISSION_DISCLOSURES: List<RuntimePermissionDisclosure>
       get() =
-          REQUIRED_PERMISSIONS +
-              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                arrayOf(POST_NOTIFICATIONS)
-              } else {
-                emptyArray()
-              }
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            listOf(
+                RuntimePermissionDisclosure(
+                    POST_NOTIFICATIONS,
+                    PermissionIntroType.NOTIFICATIONS,
+                    required = false,
+                ),
+            )
+          } else {
+            emptyList()
+          }
+
+    private val REQUIRED_RUNTIME_PERMISSIONS: List<String>
+      get() = REQUIRED_PERMISSION_DISCLOSURES.map { it.permission }
+
+    private val REQUESTABLE_RUNTIME_PERMISSIONS: List<String>
+      get() = REQUIRED_RUNTIME_PERMISSIONS + OPTIONAL_PERMISSION_DISCLOSURES.map { it.permission }
   }
 
   val viewModel: WearablesViewModel by viewModels()
 
   private val permissionCheckLauncher =
-      registerForActivityResult(RequestMultiplePermissions()) { permissionsResult ->
-        viewModel.onNotificationPermissionResult(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                permissionsResult[POST_NOTIFICATIONS] == true,
-        )
-        val requiredPermissionsResult =
-            REQUIRED_PERMISSIONS.associateWith { permission ->
-              permissionsResult[permission] == true ||
-                  ContextCompat.checkSelfPermission(this, permission) ==
-                      PackageManager.PERMISSION_GRANTED
-            }
-        viewModel.onPermissionsResult(requiredPermissionsResult) {
-          Wearables.initialize(this)
+      registerForActivityResult(RequestMultiplePermissions()) {
+        if (POST_NOTIFICATIONS in pendingPermissionRequest) {
+          val notificationGranted = isPermissionGranted(POST_NOTIFICATIONS)
+          if (!notificationGranted) {
+            notificationPermissionSkipped = true
+          }
+          reportNotificationPermission(notificationGranted)
         }
+        pendingPermissionRequest = emptyList()
+        permissionPromptError =
+            if (missingRequiredDisclosures().isEmpty()) {
+              null
+            } else {
+              getString(R.string.permission_intro_required_error)
+            }
+        refreshPermissionGate()
       }
+
+  private var permissionGateUiState by mutableStateOf(PermissionGateUiState())
+  private var permissionPromptError by mutableStateOf<String?>(null)
+  private var notificationPermissionSkipped by mutableStateOf(false)
+  private var pendingPermissionRequest: List<String> = emptyList()
+  private var requiredPermissionsReportedGranted = false
+  private var wearablesInitialized = false
+  private var lastReportedNotificationPermission: Boolean? = null
 
   private var permissionContinuation: CancellableContinuation<PermissionStatus>? = null
   private val permissionMutex = Mutex()
@@ -112,6 +157,7 @@ class MainActivity : ComponentActivity() {
 
     // Keep screen on while streaming
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    refreshPermissionGate()
     setContent {
       val themePreference = SettingsManager.themeMode
       val isDark = when (themePreference) {
@@ -132,16 +178,125 @@ class MainActivity : ComponentActivity() {
           },
       )
       EgoFlowTheme(themePreference = themePreference) {
-        CameraAccessScaffold(
-            viewModel = viewModel,
-            onRequestWearablesPermission = ::requestWearablesPermission,
-        )
+        val permissionGate = permissionGateUiState
+        if (permissionGate.showIntro) {
+          PermissionIntroScreen(
+              permissions = permissionGate.introItems,
+              onAllowPermissions = ::requestMissingRuntimePermissions,
+              onContinueWithoutNotifications =
+                  if (permissionGate.canContinueWithoutNotifications) {
+                    ::continueWithoutNotifications
+                  } else {
+                    null
+                  },
+              errorMessage = permissionPromptError,
+          )
+        } else {
+          CameraAccessScaffold(
+              viewModel = viewModel,
+              onRequestWearablesPermission = ::requestWearablesPermission,
+          )
+        }
       }
     }
   }
 
-  override fun onStart() {
-    super.onStart()
-    permissionCheckLauncher.launch(PERMISSIONS)
+  override fun onResume() {
+    super.onResume()
+    refreshPermissionGate()
+  }
+
+  private fun requestMissingRuntimePermissions() {
+    val permissionsToRequest =
+        permissionGateUiState.requestPermissions.filter { permission ->
+          !isPermissionGranted(permission) && permission in REQUESTABLE_RUNTIME_PERMISSIONS
+        }
+    if (permissionsToRequest.isEmpty()) {
+      refreshPermissionGate()
+      return
+    }
+
+    pendingPermissionRequest = permissionsToRequest
+    permissionPromptError = null
+    permissionCheckLauncher.launch(permissionsToRequest.toTypedArray())
+  }
+
+  private fun continueWithoutNotifications() {
+    notificationPermissionSkipped = true
+    permissionPromptError = null
+    reportNotificationPermission(false)
+    refreshPermissionGate()
+  }
+
+  private fun refreshPermissionGate() {
+    val missingRequired = missingRequiredDisclosures()
+    if (missingRequired.isEmpty()) {
+      permissionPromptError = null
+    }
+    val missingOptional =
+        if (notificationPermissionSkipped) {
+          emptyList()
+        } else {
+          OPTIONAL_PERMISSION_DISCLOSURES.filter { !isPermissionGranted(it.permission) }
+        }
+    val introDisclosures = missingRequired + missingOptional
+
+    permissionGateUiState =
+        PermissionGateUiState(
+            showIntro = introDisclosures.isNotEmpty(),
+            introItems =
+                introDisclosures.map { disclosure ->
+                  PermissionIntroItem(
+                      type = disclosure.type,
+                      required = disclosure.required,
+                  )
+                },
+            requestPermissions = introDisclosures.map { it.permission },
+            canContinueWithoutNotifications =
+                missingOptional.any { it.permission == POST_NOTIFICATIONS },
+        )
+
+    if (missingRequired.isEmpty()) {
+      markRequiredPermissionsGranted()
+    } else {
+      requiredPermissionsReportedGranted = false
+    }
+
+    if (OPTIONAL_PERMISSION_DISCLOSURES.all { isPermissionGranted(it.permission) }) {
+      reportNotificationPermission(true)
+    }
+  }
+
+  private fun missingRequiredDisclosures(): List<RuntimePermissionDisclosure> =
+      REQUIRED_PERMISSION_DISCLOSURES.filter { !isPermissionGranted(it.permission) }
+
+  private fun isPermissionGranted(permission: String): Boolean =
+      ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+  private fun markRequiredPermissionsGranted() {
+    if (requiredPermissionsReportedGranted) {
+      return
+    }
+    requiredPermissionsReportedGranted = true
+    val requiredPermissionsResult = REQUIRED_RUNTIME_PERMISSIONS.associateWith { true }
+    viewModel.onPermissionsResult(requiredPermissionsResult) {
+      initializeWearables()
+    }
+  }
+
+  private fun initializeWearables() {
+    if (wearablesInitialized) {
+      return
+    }
+    Wearables.initialize(this)
+    wearablesInitialized = true
+  }
+
+  private fun reportNotificationPermission(granted: Boolean) {
+    if (lastReportedNotificationPermission == granted) {
+      return
+    }
+    lastReportedNotificationPermission = granted
+    viewModel.onNotificationPermissionResult(granted)
   }
 }

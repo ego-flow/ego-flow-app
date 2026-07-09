@@ -37,10 +37,10 @@
             android:name="com.meta.wearable.mwdat.CLIENT_TOKEN"
             android:value="${mwdatClientToken}"
             />
-        <!-- Enable the Device Access Toolkit App Model (DAM) -->
+        <!-- Use the legacy XMS camera stream path; some glasses firmware reports no DWA stream service. -->
         <meta-data
             android:name="com.meta.wearable.mwdat.DAM_ENABLED"
-            android:value="true"
+            android:value="false"
             />
 
         <activity

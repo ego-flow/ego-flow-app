@@ -92,6 +92,7 @@ class StreamViewModel(
 
   companion object {
     private const val TAG = "StreamViewModel"
+    private const val GLASSES_STREAM_START_TIMEOUT_MS = 20_000L
     private val INITIAL_STATE = StreamUiState()
   }
 
@@ -110,6 +111,7 @@ class StreamViewModel(
   private var sessionErrorJob: Job? = null
   private var transportSessionJob: Job? = null
   private var fpsSamplerJob: Job? = null
+  private var streamStartTimeoutJob: Job? = null
 
   private var currentSessionId: String? = null
   private var stopRequested = false
@@ -238,6 +240,8 @@ class StreamViewModel(
     errorJob?.cancel()
     sessionStateJob?.cancel()
     sessionErrorJob?.cancel()
+    streamStartTimeoutJob?.cancel()
+    streamStartTimeoutJob = null
 
     StreamingService.start(
         context = getApplication(),
@@ -351,6 +355,13 @@ class StreamViewModel(
                     if (current == StreamState.STARTING || current == StreamState.STREAMING) {
                       hasObservedActiveStreamLifecycle = true
                     }
+                    when (current) {
+                      StreamState.STARTING -> scheduleGlassesStreamStartTimeout()
+                      StreamState.STREAMING -> cancelGlassesStreamStartTimeout()
+                      StreamState.STOPPED,
+                      StreamState.CLOSED -> cancelGlassesStreamStartTimeout()
+                      else -> Unit
+                    }
                     _uiState.update {
                       val startedAt =
                           if (current == StreamState.STREAMING && it.streamingStartedAtMs == null) {
@@ -403,7 +414,14 @@ class StreamViewModel(
                     wearablesViewModel.onStreamFailed()
                   }
                 }
-            addedStream.start()
+            addedStream
+                .start()
+                .onFailure { error, _ ->
+                  Log.e(TAG, "Failed to start glasses stream: ${error.description}")
+                  wearablesViewModel.setRecentError(streamErrorMessage(error))
+                  stopStream(StopReason.FATAL_ERROR)
+                  wearablesViewModel.onStreamFailed()
+                }
           }
           .onFailure { error, _ ->
             Log.e(TAG, "Failed to add stream to session: ${error.description}")
@@ -412,6 +430,37 @@ class StreamViewModel(
             wearablesViewModel.onStreamFailed()
           }
     }
+  }
+
+  private fun scheduleGlassesStreamStartTimeout() {
+    streamStartTimeoutJob?.cancel()
+    streamStartTimeoutJob =
+        viewModelScope.launch {
+          delay(GLASSES_STREAM_START_TIMEOUT_MS)
+          val state = _uiState.value
+          if (
+              !stopRequested &&
+                  state.streamingMode == StreamingMode.GLASSES &&
+                  state.streamState == StreamState.STARTING &&
+                  stream != null
+          ) {
+            Log.w(
+                TAG,
+                "Glasses stream stayed STARTING for ${GLASSES_STREAM_START_TIMEOUT_MS}ms; " +
+                    "frames received=${inputFrameCount.get()}",
+            )
+            wearablesViewModel.setRecentError(
+                getApplication<Application>().getString(R.string.error_glasses_stream_start_timeout),
+            )
+            stopStream(StopReason.FATAL_ERROR)
+            wearablesViewModel.onStreamFailed()
+          }
+        }
+  }
+
+  private fun cancelGlassesStreamStartTimeout() {
+    streamStartTimeoutJob?.cancel()
+    streamStartTimeoutJob = null
   }
 
   private fun handleSessionError(error: DeviceSessionError) {
@@ -621,6 +670,8 @@ class StreamViewModel(
     transportSessionJob?.cancel()
     fpsSamplerJob?.cancel()
     fpsSamplerJob = null
+    streamStartTimeoutJob?.cancel()
+    streamStartTimeoutJob = null
 
     videoJob?.cancel()
     videoJob = null

@@ -47,6 +47,23 @@
     <string name="getting_started_step_photo_desc" description="Step 3 description">Tap the shutter while live.</string>
     <string name="getting_started_continue" description="Continue button">Got it</string>
 
+    <!-- Permission intro -->
+    <string name="permission_intro_title" description="Permission intro title">Review app permissions</string>
+    <string name="permission_intro_subtitle" description="Permission intro subtitle">EgoFlow only asks for permissions that support recording, streaming, and device connection.</string>
+    <string name="permission_intro_allow" description="Button that starts the system permission request">Allow permissions</string>
+    <string name="permission_intro_continue_without_notifications" description="Button that continues without notification permission">Continue without notifications</string>
+    <string name="permission_intro_required" description="Badge for permissions required to enter the app">Required</string>
+    <string name="permission_intro_recommended" description="Badge for permissions recommended but not required">Recommended</string>
+    <string name="permission_intro_required_error" description="Shown when a required permission is denied">Camera, microphone, and Bluetooth permissions are required to continue.</string>
+    <string name="permission_intro_camera_title" description="Camera permission title">Camera</string>
+    <string name="permission_intro_camera_description" description="Camera permission explanation">Streams video from your phone camera when you choose phone mode.</string>
+    <string name="permission_intro_microphone_title" description="Microphone permission title">Microphone</string>
+    <string name="permission_intro_microphone_description" description="Microphone permission explanation">Captures audio for live streaming and microphone diagnostics.</string>
+    <string name="permission_intro_bluetooth_title" description="Bluetooth permission title">Bluetooth</string>
+    <string name="permission_intro_bluetooth_description" description="Bluetooth permission explanation">Connects to your smart glasses and keeps the active device status up to date.</string>
+    <string name="permission_intro_notifications_title" description="Notifications permission title">Notifications</string>
+    <string name="permission_intro_notifications_description" description="Notifications permission explanation">Shows active streaming and upload status while EgoFlow runs in the background.</string>
+
     <!-- Device update required -->
     <string name="update_required_title" description="Update required banner title">Update required</string>
     <string name="update_required_firmware_message" description="Firmware update required message">Your glasses firmware needs an update before you can start streaming.</string>
@@ -63,5 +80,6 @@
     <string name="error_device_disconnected" description="Device disconnected error">Lost connection to your glasses. Reconnect and try again.</string>
     <string name="error_device_powered_off" description="Device powered off error">Your glasses powered off. Turn them back on and try again.</string>
     <string name="error_stream_timeout" description="Stream timeout error">The stream timed out. Check your connection and try again.</string>
+    <string name="error_glasses_stream_start_timeout" description="Glasses stream did not start after session setup">Your glasses did not start sending video. Put them on, make sure the camera is available, then try again.</string>
     <string name="error_glasses_stream_ended" description="Glasses ended the video stream">Your glasses ended the stream. Reconnect and try again.</string>
 </resources>
