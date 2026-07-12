@@ -109,12 +109,14 @@ class StreamViewModel(
   private var errorJob: Job? = null
   private var sessionStateJob: Job? = null
   private var sessionErrorJob: Job? = null
+  private var addStreamJob: Job? = null
   private var transportSessionJob: Job? = null
   private var fpsSamplerJob: Job? = null
   private var streamStartTimeoutJob: Job? = null
 
   private var currentSessionId: String? = null
   private var stopRequested = false
+  private var streamLifecycleGeneration = 0L
   // Tracks the prior DeviceSessionState so the session-state collector can tell a
   // device-initiated resume (PAUSED -> STARTED) from a fresh start.
   private var previousDeviceSessionState: DeviceSessionState? = null
@@ -225,14 +227,32 @@ class StreamViewModel(
     wearablesViewModel.onStreamFailed()
   }
 
+  private fun nextStreamLifecycleGeneration(): Long {
+    streamLifecycleGeneration += 1
+    return streamLifecycleGeneration
+  }
+
+  private fun invalidateStreamLifecycle() {
+    streamLifecycleGeneration += 1
+  }
+
+  private fun isActiveLifecycle(generation: Long): Boolean =
+      generation == streamLifecycleGeneration && !stopRequested
+
+  private fun isActiveGlassesLifecycle(
+      generation: Long,
+      deviceSession: DeviceSession,
+  ): Boolean = isActiveLifecycle(generation) && session === deviceSession
+
   // [Start glasses-mode streaming]
   // Idempotent: never starts the same session twice (avoids the case where switching
   // tabs brings StreamScreen back into composition and re-fires the LaunchedEffect).
   fun startStream() {
-    if (session != null) {
+    if (session != null || addStreamJob?.isActive == true) {
       Log.d(TAG, "startStream ignored -- session already active")
       return
     }
+    val generation = nextStreamLifecycleGeneration()
     stopRequested = false
     previousDeviceSessionState = null
     videoJob?.cancel()
@@ -240,6 +260,7 @@ class StreamViewModel(
     errorJob?.cancel()
     sessionStateJob?.cancel()
     sessionErrorJob?.cancel()
+    addStreamJob?.cancel()
     streamStartTimeoutJob?.cancel()
     streamStartTimeoutJob = null
 
@@ -261,15 +282,25 @@ class StreamViewModel(
     // Wearables.startStreamSession was removed.)
     Wearables.createSession(deviceSelector)
         .onSuccess { createdSession ->
+          if (!isActiveLifecycle(generation)) {
+            Log.d(TAG, "Discarding stale created session after stop/restart")
+            createdSession.stop()
+            return@onSuccess
+          }
           session = createdSession
           sessionErrorJob =
               viewModelScope.launch {
-                createdSession.errors.collect { error -> handleSessionError(error) }
+                createdSession.errors.collect { error ->
+                  if (isActiveGlassesLifecycle(generation, createdSession)) {
+                    handleSessionError(error)
+                  }
+                }
               }
-          observeSessionState(createdSession)
+          observeSessionState(createdSession, generation)
           createdSession.start()
         }
         .onFailure { error, _ ->
+          if (!isActiveLifecycle(generation)) return@onFailure
           Log.e(TAG, "Failed to create session: ${error.description}")
           wearablesViewModel.setRecentError("Streaming failed: ${error.description}")
           stopStream(StopReason.FATAL_ERROR)
@@ -282,10 +313,14 @@ class StreamViewModel(
   // first time the session reaches STARTED. A later STARTED (e.g. PAUSED -> STARTED on a
   // tap-to-resume gesture) finds stream != null and is left alone so the SDK resumes the
   // existing stream rather than recreating it.
-  private fun observeSessionState(deviceSession: DeviceSession) {
+  private fun observeSessionState(deviceSession: DeviceSession, generation: Long) {
     sessionStateJob =
         viewModelScope.launch {
           deviceSession.state.collect { current ->
+            if (!isActiveGlassesLifecycle(generation, deviceSession)) {
+              Log.d(TAG, "Ignoring stale DeviceSessionState=$current")
+              return@collect
+            }
             val prev = previousDeviceSessionState
             previousDeviceSessionState = current
             Log.i(TAG, "DeviceSessionState transition: $prev -> $current")
@@ -300,7 +335,7 @@ class StreamViewModel(
                   // stream internally -- do NOT recreate it.
                   Log.d(TAG, "Session resumed from PAUSED -- stream stays alive")
                 } else if (stream == null) {
-                  addGlassesStream(deviceSession)
+                  addGlassesStream(deviceSession, generation)
                 }
               }
               DeviceSessionState.PAUSED -> {
@@ -313,21 +348,34 @@ class StreamViewModel(
         }
   }
 
-  private fun addGlassesStream(deviceSession: DeviceSession) {
-    viewModelScope.launch {
-      deviceSession
-          .addStream(
-              StreamConfiguration(
-                  videoQuality = SettingsManager.videoQuality,
-                  frameRate = 30,
-                  // Only RTMP ships pre-encoded HEVC; WHIP and HTTP re-encode from raw
-                  // YUV, so they need uncompressed glasses frames.
-                  compressVideo =
-                      SettingsManager.rtmpCompressVideo &&
-                          SettingsManager.transportMode == TransportId.RTMP,
-              ),
-          )
-          .onSuccess { addedStream ->
+  private fun addGlassesStream(deviceSession: DeviceSession, generation: Long) {
+    addStreamJob?.cancel()
+    addStreamJob =
+        viewModelScope.launch {
+          val addResult =
+              deviceSession.addStream(
+                  StreamConfiguration(
+                      videoQuality = SettingsManager.videoQuality,
+                      frameRate = 30,
+                      // Only RTMP ships pre-encoded HEVC; WHIP and HTTP re-encode from raw
+                      // YUV, so they need uncompressed glasses frames.
+                      compressVideo =
+                          SettingsManager.rtmpCompressVideo &&
+                              SettingsManager.transportMode == TransportId.RTMP,
+                  ),
+              )
+          if (!isActiveGlassesLifecycle(generation, deviceSession)) {
+            Log.d(TAG, "Stopping stale stream created after session teardown")
+            addResult.getOrNull()?.stop()
+            return@launch
+          }
+          addResult
+              .onSuccess { addedStream ->
+                if (!isActiveGlassesLifecycle(generation, deviceSession)) {
+                  Log.d(TAG, "Stopping stale stream before start")
+                  addedStream.stop()
+                  return@onSuccess
+                }
             stream = addedStream
             // Off Main: frame ingestion does the YUV byte-copy (inside
             // RtmpStreamer.sendGlassesFrame). Main thread should only do UI
@@ -335,13 +383,27 @@ class StreamViewModel(
             // ultimately on the RTMP executor).
             videoJob =
                 viewModelScope.launch(Dispatchers.Default) {
-                  addedStream.videoStream.collect { handleVideoFrame(it) }
+                  addedStream.videoStream.collect {
+                    if (
+                        isActiveGlassesLifecycle(generation, deviceSession) &&
+                            stream === addedStream
+                    ) {
+                      handleVideoFrame(it)
+                    }
+                  }
                 }
             stateJob =
                 viewModelScope.launch {
                   var prevStreamState: StreamState? = null
                   var hasObservedActiveStreamLifecycle = false
                   addedStream.state.collect { current ->
+                    if (
+                        !isActiveGlassesLifecycle(generation, deviceSession) ||
+                            stream !== addedStream
+                    ) {
+                      Log.d(TAG, "Ignoring stale StreamState=$current")
+                      return@collect
+                    }
                     Log.i(TAG, "StreamState transition: $prevStreamState -> $current")
                     prevStreamState = current
                     val terminalState = current == StreamState.STOPPED || current == StreamState.CLOSED
@@ -356,7 +418,12 @@ class StreamViewModel(
                       hasObservedActiveStreamLifecycle = true
                     }
                     when (current) {
-                      StreamState.STARTING -> scheduleGlassesStreamStartTimeout()
+                      StreamState.STARTING ->
+                          scheduleGlassesStreamStartTimeout(
+                              generation = generation,
+                              deviceSession = deviceSession,
+                              addedStream = addedStream,
+                          )
                       StreamState.STREAMING -> cancelGlassesStreamStartTimeout()
                       StreamState.STOPPED,
                       StreamState.CLOSED -> cancelGlassesStreamStartTimeout()
@@ -404,6 +471,13 @@ class StreamViewModel(
             errorJob =
                 viewModelScope.launch {
                   addedStream.errorStream.collect { error ->
+                    if (
+                        !isActiveGlassesLifecycle(generation, deviceSession) ||
+                            stream !== addedStream
+                    ) {
+                      Log.d(TAG, "Ignoring stale StreamError=$error")
+                      return@collect
+                    }
                     if (error == StreamError.STREAM_ERROR) {
                       Log.d(TAG, "Non-critical stream error, stream continues: ${error.description}")
                       return@collect
@@ -414,9 +488,23 @@ class StreamViewModel(
                     wearablesViewModel.onStreamFailed()
                   }
                 }
-            addedStream
-                .start()
+            val startResult = addedStream.start()
+            if (
+                !isActiveGlassesLifecycle(generation, deviceSession) ||
+                    stream !== addedStream
+            ) {
+              Log.d(TAG, "Stopping stale stream after start returned")
+              addedStream.stop()
+              return@onSuccess
+            }
+            startResult
                 .onFailure { error, _ ->
+                  if (
+                      !isActiveGlassesLifecycle(generation, deviceSession) ||
+                          stream !== addedStream
+                  ) {
+                    return@onFailure
+                  }
                   Log.e(TAG, "Failed to start glasses stream: ${error.description}")
                   wearablesViewModel.setRecentError(streamErrorMessage(error))
                   stopStream(StopReason.FATAL_ERROR)
@@ -424,15 +512,20 @@ class StreamViewModel(
                 }
           }
           .onFailure { error, _ ->
+            if (!isActiveGlassesLifecycle(generation, deviceSession)) return@onFailure
             Log.e(TAG, "Failed to add stream to session: ${error.description}")
             wearablesViewModel.setRecentError("Streaming failed: ${error.description}")
             stopStream(StopReason.FATAL_ERROR)
             wearablesViewModel.onStreamFailed()
           }
-    }
+        }
   }
 
-  private fun scheduleGlassesStreamStartTimeout() {
+  private fun scheduleGlassesStreamStartTimeout(
+      generation: Long,
+      deviceSession: DeviceSession,
+      addedStream: Stream,
+  ) {
     streamStartTimeoutJob?.cancel()
     streamStartTimeoutJob =
         viewModelScope.launch {
@@ -442,7 +535,8 @@ class StreamViewModel(
               !stopRequested &&
                   state.streamingMode == StreamingMode.GLASSES &&
                   state.streamState == StreamState.STARTING &&
-                  stream != null
+                  stream === addedStream &&
+                  isActiveGlassesLifecycle(generation, deviceSession)
           ) {
             Log.w(
                 TAG,
@@ -533,6 +627,7 @@ class StreamViewModel(
       Log.d(TAG, "startPhoneCamera ignored -- camera already active")
       return
     }
+    nextStreamLifecycleGeneration()
     stopRequested = false
     val manager = PhoneCameraManager(getApplication())
     phoneCameraManager = manager
@@ -667,12 +762,15 @@ class StreamViewModel(
         }
     val serviceTransportMode = streamingServiceTransportMode(builtTransportMode)
     stopRequested = true
+    invalidateStreamLifecycle()
     transportSessionJob?.cancel()
     fpsSamplerJob?.cancel()
     fpsSamplerJob = null
     streamStartTimeoutJob?.cancel()
     streamStartTimeoutJob = null
 
+    addStreamJob?.cancel()
+    addStreamJob = null
     videoJob?.cancel()
     videoJob = null
     stateJob?.cancel()
