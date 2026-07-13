@@ -63,10 +63,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Settings
-import com.meta.wearable.dat.camera.types.StreamState
-import com.meta.wearable.dat.core.session.DeviceSessionState
 import io.egoflow.app.core.transport.api.TransportState
 import io.egoflow.app.settings.SettingsManager
+import io.egoflow.app.stream.CaptureState
 import io.egoflow.app.stream.FPS_HISTORY_SECONDS
 import io.egoflow.app.stream.StreamUiState
 import io.egoflow.app.stream.StreamViewModel
@@ -121,7 +120,7 @@ fun StreamScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (streamUiState.streamState == StreamState.STARTING) {
+        if (streamUiState.streamState == CaptureState.STARTING) {
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -190,13 +189,9 @@ fun StreamScreen(
     }
 }
 
-/** Compact card with three status rows:
- *   1. Device           -- glasses-side DeviceSession (RUNNING/PAUSED/...);
- *      hidden in phone-camera mode where it carries no meaning
- *   2. Stream (from Glasses/Phone) -- per-stream lifecycle of the source
- *      (glasses camera Stream over Wi-Fi, or the local phone camera);
- *      the label tracks streamingMode
- *   3. Stream (to Server)    -- outbound RTMP transport (app -> server)
+/** Compact card with two status rows:
+ *   1. Stream (from Glasses/Phone) -- per-stream lifecycle of the active source
+ *   2. Stream (to Server) -- outbound transport (app -> server)
  *  Decoupling them surfaces failure modes where one link is healthy
  *  but another has failed, instead of conflating into a single
  *  "LIVE / CONNECTING" label. Per-frame counters live elsewhere; the
@@ -216,9 +211,8 @@ private fun StreamHealthCard(state: StreamUiState) {
     val elapsedSec = state.streamingStartedAtMs
         ?.let { ((nowMs - it) / 1000L).coerceAtLeast(0L) }
         ?: 0L
-    val isStreaming = state.streamState == StreamState.STREAMING &&
+    val isStreaming = state.streamState == CaptureState.STREAMING &&
         state.streamingStartedAtMs != null
-    val deviceInfo = deviceSessionStatusInfo(state.deviceSessionState)
     val streamInfo = streamSessionStatusInfo(state.streamState)
     val transportInfo = transportStatusInfo(state.transportState)
     val codec = state.activeVideoCodec?.displayName
@@ -236,11 +230,6 @@ private fun StreamHealthCard(state: StreamUiState) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         val isPhoneMode = state.streamingMode == StreamingMode.PHONE
-        // The glasses DeviceSession is meaningless in phone-camera mode
-        // (its value is stale from the last wearable), so suppress the row.
-        if (deviceInfo != null && !isPhoneMode) {
-            StatusRow(label = "Device", value = deviceInfo.label, dotColor = deviceInfo.color)
-        }
         StatusRow(
             label = if (isPhoneMode) "Stream (from Phone)" else "Stream (from Glasses)",
             value = streamInfo.label,
@@ -348,35 +337,13 @@ private fun FpsSparkline(
 private data class StatusInfo(val label: String, val color: Color)
 
 @Composable
-private fun streamSessionStatusInfo(state: StreamState): StatusInfo {
+private fun streamSessionStatusInfo(state: CaptureState): StatusInfo {
     val colors = LocalEgoFlowColors.current
     val dimmed = MaterialTheme.colorScheme.outline
     return when (state) {
-        StreamState.STARTING -> StatusInfo("STARTING", colors.statusYellow)
-        StreamState.STARTED -> StatusInfo("STARTED", colors.statusYellow)
-        StreamState.STREAMING -> StatusInfo("STREAMING", colors.statusGreen)
-        StreamState.PAUSED -> StatusInfo("PAUSED", colors.statusYellow)
-        StreamState.STOPPING -> StatusInfo("STOPPING", colors.statusYellow)
-        StreamState.STOPPED -> StatusInfo("STOPPED", dimmed)
-        StreamState.CLOSED -> StatusInfo("CLOSED", dimmed)
-    }
-}
-
-// Device-level session on the glasses. Null => no active glasses
-// session (phone-camera mode, or before streaming starts); the caller
-// hides the row in that case rather than rendering an "n/a".
-@Composable
-private fun deviceSessionStatusInfo(state: DeviceSessionState?): StatusInfo? {
-    if (state == null) return null
-    val colors = LocalEgoFlowColors.current
-    val dimmed = MaterialTheme.colorScheme.outline
-    return when (state) {
-        DeviceSessionState.IDLE -> StatusInfo("IDLE", dimmed)
-        DeviceSessionState.STARTING -> StatusInfo("STARTING", colors.statusYellow)
-        DeviceSessionState.STARTED -> StatusInfo("RUNNING", colors.statusGreen)
-        DeviceSessionState.PAUSED -> StatusInfo("PAUSED", colors.statusYellow)
-        DeviceSessionState.STOPPING -> StatusInfo("STOPPING", colors.statusYellow)
-        DeviceSessionState.STOPPED -> StatusInfo("STOPPED", dimmed)
+        CaptureState.STARTING -> StatusInfo("STARTING", colors.statusYellow)
+        CaptureState.STREAMING -> StatusInfo("STREAMING", colors.statusGreen)
+        CaptureState.STOPPED -> StatusInfo("STOPPED", dimmed)
     }
 }
 

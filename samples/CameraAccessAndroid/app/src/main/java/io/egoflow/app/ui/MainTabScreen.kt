@@ -27,8 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.meta.wearable.dat.core.types.Permission
-import com.meta.wearable.dat.core.types.PermissionStatus
 import io.egoflow.app.egoflow.RegisteredRepository
 import io.egoflow.app.ui.repo.RepoLoadState
 import io.egoflow.app.ui.repo.RepoScreen
@@ -43,7 +41,6 @@ import io.egoflow.app.wearables.WearablesViewModel
 @Composable
 fun MainTabScreen(
     viewModel: WearablesViewModel,
-    onRequestWearablesPermission: suspend (Permission) -> PermissionStatus,
     onThemeChanged: (ThemePreference) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -120,18 +117,17 @@ fun MainTabScreen(
                                 onRefresh = { repoController.refresh() },
                                 onViewRepositories = { viewModel.selectTab(MainTab.REPO) },
                             )
-                        uiState.isRegistered ->
+                        uiState.hasActiveDevice ->
                             NonStreamScreen(
                                 viewModel = viewModel,
-                                onRequestWearablesPermission = onRequestWearablesPermission,
                                 repository = activeRepository,
                                 onOpenRepositories = { viewModel.selectTab(MainTab.REPO) },
                             )
-                        else -> HomeScreen(
-                            viewModel = viewModel,
-                            repository = activeRepository,
-                            onOpenRepositories = { viewModel.selectTab(MainTab.REPO) },
-                        )
+                        else ->
+                            ExtentosConnectionScreen(
+                                glasses = viewModel.glasses,
+                                onStartPhone = { viewModel.navigateToPhoneMode() },
+                            )
                     }
                 MainTab.SETTINGS ->
                     SettingsScreen(

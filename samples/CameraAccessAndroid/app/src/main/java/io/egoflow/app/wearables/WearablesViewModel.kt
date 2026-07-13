@@ -7,31 +7,19 @@
  * Modified in this repository for EgoFlow; see THIRD_PARTY_NOTICES.md.
  */
 
-// WearablesViewModel - Core DAT SDK Integration
-//
-// This ViewModel demonstrates the core DAT API patterns for:
-// - Device registration and unregistration using the DAT SDK
-// - Permission management for wearable devices
-// - Device discovery and state management
-
 package io.egoflow.app.wearables
 
-import android.app.Activity
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.meta.wearable.dat.core.Wearables
-import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
-import com.meta.wearable.dat.core.selectors.DeviceSelector
-import com.meta.wearable.dat.core.types.DeviceCompatibility
-import com.meta.wearable.dat.core.types.DeviceIdentifier
-import com.meta.wearable.dat.core.types.Permission
-import com.meta.wearable.dat.core.types.PermissionStatus
-import com.meta.wearable.dat.core.types.RegistrationState
+import com.extentos.glasses.core.DisconnectCause
+import com.extentos.glasses.core.ExtentosGlasses
+import com.extentos.glasses.core.GlassesState
 import io.egoflow.app.auth.EgoFlowAuthClient
 import io.egoflow.app.auth.EgoFlowLoginResult
+import io.egoflow.app.extentos.ExtentosBootstrap
 import io.egoflow.app.settings.AuthPrefs
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,161 +31,53 @@ import kotlinx.coroutines.launch
 class WearablesViewModel(application: Application) : AndroidViewModel(application) {
   companion object {
     private const val TAG = "WearablesViewModel"
-    // Each transition overlay stays up for at least this long so a fast
-    // start/stop doesn't flash a spinner for a single frame.
     private const val TRANSITION_MIN_VISIBLE_MS = 2_000L
   }
+
+  val glasses: ExtentosGlasses = (application as ExtentosBootstrap).glasses
 
   private val _uiState = MutableStateFlow(WearablesUiState())
   val uiState: StateFlow<WearablesUiState> = _uiState.asStateFlow()
 
   private val authClient = EgoFlowAuthClient()
-
-  // AutoDeviceSelector automatically selects the first available wearable device.
-  // Lazy because AutoDeviceSelector() requires Wearables.initialize() to have run first (0.6.0).
-  val deviceSelector: DeviceSelector by lazy { AutoDeviceSelector() }
-  private var deviceSelectorJob: Job? = null
-
-  private var monitoringStarted = false
-  private val deviceMonitoringJobs = mutableMapOf<DeviceIdentifier, Job>()
-  private val deviceCompatibility = mutableMapOf<DeviceIdentifier, DeviceCompatibility>()
-
-  // ----- Stream transition overlay -----
-  //
-  // A transition (STARTING/STOPPING) clears only once BOTH conditions hold:
-  //  - the underlying work finished (transportWorkDone, set by StreamViewModel)
-  //  - the minimum visible time elapsed (transitionMinElapsed, set by the timer)
-  // This AND keeps the overlay on screen for at least TRANSITION_MIN_VISIBLE_MS
-  // even when the work completes instantly. The timer runs in viewModelScope
-  // (app-scoped), so it survives StreamViewModel being cleared mid-stop.
   private var transitionTimerJob: Job? = null
   private var transitionMinElapsed = false
   private var transitionWorkDone = false
   private var notificationPermissionWarningShown = false
-  // A terminal failure observed while a transition overlay is up. When set, a
-  // STARTING transition resolves by returning to device selection (instead of
-  // staying on the stream screen) once the min-visible timer elapses -- so a
-  // start that fails instantly still shows the start UI for the full window
-  // rather than flashing back home.
   private var transitionFailed = false
 
-  private fun startMonitoring() {
-    if (monitoringStarted) {
+  init {
+    observeExtentosConnection()
+  }
+
+  private fun observeExtentosConnection() {
+    viewModelScope.launch {
+      glasses.connection.state.collect { state ->
+        val previousStatus = _uiState.value.connectionStatus
+        val status = state.toConnectionStatus()
+        Log.i(TAG, "Extentos connection state: $previousStatus -> $status")
+        _uiState.update { it.copy(connectionStatus = status) }
+
+        if (state is GlassesState.Disconnected && status != previousStatus) {
+          disconnectedMessage(state.cause)?.let(::setRecentError)
+        }
+      }
+    }
+  }
+
+  fun disconnectGlasses() {
+    viewModelScope.launch {
+      glasses.connection.disconnect()
+    }
+  }
+
+  fun navigateToStreaming() {
+    if (!_uiState.value.connectionStatus.canStream) {
+      setRecentError("Connect your glasses before starting a glasses stream.")
       return
     }
-    monitoringStarted = true
-
-    // Monitor device selector for active device
-    deviceSelectorJob =
-        viewModelScope.launch {
-          deviceSelector.activeDeviceFlow().collect { device ->
-            _uiState.update { it.copy(hasActiveDevice = device != null) }
-          }
-        }
-
-    // This allows the app to react to registration changes (registered, unregistered, etc.)
-    viewModelScope.launch {
-      Wearables.registrationState.collect { value ->
-        val previousState = _uiState.value.registrationState
-        val showGettingStartedSheet =
-            value == RegistrationState.REGISTERED && previousState == RegistrationState.REGISTERING
-        _uiState.update {
-          it.copy(registrationState = value, isGettingStartedSheetVisible = showGettingStartedSheet)
-        }
-      }
-    }
-    // This automatically updates when devices are discovered, connected, or disconnected
-    viewModelScope.launch {
-      Wearables.devices.collect { value ->
-        _uiState.update { it.copy(devices = value.toList().toImmutableList()) }
-        // Monitor device metadata for compatibility issues
-        monitorDeviceCompatibility(value)
-      }
-    }
-  }
-
-  private fun monitorDeviceCompatibility(devices: Set<DeviceIdentifier>) {
-    // Cancel monitoring jobs for devices that are no longer in the list
-    val removedDevices = deviceMonitoringJobs.keys - devices
-    removedDevices.forEach { deviceId ->
-      deviceMonitoringJobs[deviceId]?.cancel()
-      deviceMonitoringJobs.remove(deviceId)
-      deviceCompatibility.remove(deviceId)
-    }
-    updateFirmwareUpdateRequired()
-
-    // Start monitoring jobs only for new devices (not already being monitored)
-    val newDevices = devices - deviceMonitoringJobs.keys
-    newDevices.forEach { deviceId ->
-      val job =
-          viewModelScope.launch {
-            Wearables.devicesMetadata[deviceId]?.collect { metadata ->
-              deviceCompatibility[deviceId] = metadata.compatibility
-              updateFirmwareUpdateRequired()
-            }
-          }
-      deviceMonitoringJobs[deviceId] = job
-    }
-  }
-
-  private fun updateFirmwareUpdateRequired() {
-    val isRequired =
-        deviceCompatibility.values.any { it == DeviceCompatibility.DEVICE_UPDATE_REQUIRED }
-    _uiState.update { it.copy(isFirmwareUpdateRequired = isRequired) }
-  }
-
-  fun startRegistration(activity: Activity) {
-    Wearables.startRegistration(activity)
-  }
-
-  fun startUnregistration(activity: Activity) {
-    Wearables.startUnregistration(activity)
-  }
-
-  fun openFirmwareUpdate(activity: Activity) {
-    Wearables.openFirmwareUpdate(activity).onFailure { error, _ -> setRecentError(error.description) }
-  }
-
-  fun openDATGlassesAppUpdate(activity: Activity) {
-    Wearables.openDATGlassesAppUpdate(activity).onFailure { error, _ ->
-      setRecentError(error.description)
-    }
-  }
-
-  internal fun setDatAppUpdateRequired(required: Boolean) {
-    _uiState.update { it.copy(isDatAppUpdateRequired = required) }
-  }
-
-  fun navigateToStreaming(onRequestWearablesPermission: suspend (Permission) -> PermissionStatus) {
-    viewModelScope.launch {
-      val permission = Permission.CAMERA // Camera permission is required for streaming
-      val result = Wearables.checkPermissionStatus(permission)
-
-      // Handle the result
-      result.onFailure { error, _ ->
-        setRecentError("Permission check error: ${error.description}")
-        return@launch
-      }
-
-      val permissionStatus = result.getOrNull()
-      if (permissionStatus == PermissionStatus.Granted) {
-        beginStreamStart()
-        _uiState.update { it.copy(isStreaming = true) }
-        return@launch
-      }
-
-      // Request permission
-      val requestedPermissionStatus = onRequestWearablesPermission(permission)
-      when (requestedPermissionStatus) {
-        PermissionStatus.Denied -> {
-          setRecentError("Permission denied")
-        }
-        PermissionStatus.Granted -> {
-          beginStreamStart()
-          _uiState.update { it.copy(isStreaming = true) }
-        }
-      }
-    }
+    beginStreamStart()
+    _uiState.update { it.copy(isStreaming = true, isPhoneMode = false) }
   }
 
   fun navigateToPhoneMode() {
@@ -206,24 +86,14 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
   }
 
   fun navigateToDeviceSelection() {
-    // Also clears any active transition overlay -- this is the single exit used
-    // by the normal stop path (after stopSession) and by every start-failure
-    // path, so dismissing the overlay here covers both.
     transitionTimerJob?.cancel()
     _uiState.update {
       it.copy(isStreaming = false, isPhoneMode = false, streamTransition = StreamTransition.NONE)
     }
   }
 
-  // [Stream transition overlay lifecycle]
-  // beginStreamStart/beginStreamStop arm the overlay + min-visible timer.
-  // onStreamStarted/onStreamStopped report the work as done. The overlay
-  // clears only once both the timer and the work have completed.
-
   private fun beginStreamStart() = startTransition(StreamTransition.STARTING)
 
-  /** Call when the user taps Stop. Arms the STOPPING overlay; navigation back
-   *  to device selection happens from [onStreamStopped] once teardown finishes. */
   fun beginStreamStop() = startTransition(StreamTransition.STOPPING)
 
   private fun startTransition(phase: StreamTransition) {
@@ -240,28 +110,18 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
         }
   }
 
-  /** Reported by StreamViewModel when the active transport session reaches
-   *  Streaming (the start has succeeded). No-op unless a start is in progress. */
   fun onStreamStarted() {
     if (_uiState.value.streamTransition != StreamTransition.STARTING) return
     transitionWorkDone = true
     finishTransitionIfReady()
   }
 
-  /** Reported by StreamViewModel once stopSession() has finished tearing the
-   *  stream down. No-op unless a stop is in progress. */
   fun onStreamStopped() {
     if (_uiState.value.streamTransition != StreamTransition.STOPPING) return
     transitionWorkDone = true
     finishTransitionIfReady()
   }
 
-  /** Reported by StreamViewModel when a start or an active stream fails
-   *  terminally. If a transition overlay is showing (e.g. the STARTING start
-   *  UI), keep it up until its min-visible window elapses before bouncing back
-   *  to device selection, so a fast failure doesn't flash the start UI for a
-   *  single frame. With no transition in progress (a mid-stream failure),
-   *  return immediately. The user-facing error is surfaced by the caller. */
   fun onStreamFailed() {
     if (_uiState.value.streamTransition == StreamTransition.NONE) {
       navigateToDeviceSelection()
@@ -275,15 +135,12 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
   private fun finishTransitionIfReady() {
     if (!transitionMinElapsed || !transitionWorkDone) return
     when (_uiState.value.streamTransition) {
-      // Start finished. On success stay on StreamScreen (just drop the
-      // overlay); on failure bounce back to device selection.
       StreamTransition.STARTING ->
           if (transitionFailed) {
             navigateToDeviceSelection()
           } else {
             _uiState.update { it.copy(streamTransition = StreamTransition.NONE) }
           }
-      // Stop finished -- leave the stream and clear the overlay in one step.
       StreamTransition.STOPPING -> navigateToDeviceSelection()
       StreamTransition.NONE -> Unit
     }
@@ -317,20 +174,9 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
     _uiState.update { it.copy(recentSuccess = message) }
   }
 
-  fun onPermissionsResult(permissionsResult: Map<String, Boolean>, onAllGranted: () -> Unit) {
-    val granted = permissionsResult.entries.all { it.value }
-    _uiState.update { it.copy(canRegister = granted) }
-    if (granted) {
-      onAllGranted()
-      startMonitoring()
-    } else {
-      _uiState.update {
-        it.copy(
-            recentError =
-                "Allow camera, microphone, and Bluetooth permissions to continue.",
-        )
-      }
-    }
+  fun onPermissionsResult(permissionsResult: Map<String, Boolean>) {
+    if (permissionsResult.values.all { it }) return
+    setRecentError("Allow camera and Bluetooth permissions to connect and stream from glasses.")
   }
 
   fun onNotificationPermissionResult(granted: Boolean) {
@@ -341,14 +187,6 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
     }
   }
 
-  fun showGettingStartedSheet() {
-    _uiState.update { it.copy(isGettingStartedSheetVisible = true) }
-  }
-
-  fun hideGettingStartedSheet() {
-    _uiState.update { it.copy(isGettingStartedSheetVisible = false) }
-  }
-
   fun login(
       baseUrl: String,
       userId: String,
@@ -357,8 +195,7 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
   ) {
     _uiState.update { it.copy(isLoginLoading = true) }
     viewModelScope.launch {
-      val result = authClient.login(baseUrl, userId, password)
-      when (result) {
+      when (val result = authClient.login(baseUrl, userId, password)) {
         is EgoFlowLoginResult.Success -> {
           AuthPrefs.egoFlowApiBaseUrl = baseUrl.trim()
           AuthPrefs.egoFlowUserId = result.userId
@@ -381,11 +218,20 @@ class WearablesViewModel(application: Application) : AndroidViewModel(applicatio
     _uiState.update { it.copy(isLoggedIn = false) }
   }
 
-  override fun onCleared() {
-    super.onCleared()
-    // Cancel all device monitoring jobs when ViewModel is cleared
-    deviceMonitoringJobs.values.forEach { it.cancel() }
-    deviceMonitoringJobs.clear()
-    deviceSelectorJob?.cancel()
-  }
+  private fun disconnectedMessage(cause: DisconnectCause): String? =
+      when (cause) {
+        DisconnectCause.UserRequested -> null
+        DisconnectCause.HingesClosed ->
+            "Glasses disconnected because they were folded. Open them and reconnect."
+        DisconnectCause.ThermalCritical ->
+            "Glasses disconnected to cool down. Wait a moment before reconnecting."
+        DisconnectCause.DeviceDroppedConnection ->
+            "Connection to the glasses was lost. Keep them nearby and reconnect."
+        is DisconnectCause.TransportFailure ->
+            "The glasses connection failed. Check Bluetooth and try again."
+        is DisconnectCause.SimulatorBrowserClosed,
+        is DisconnectCause.SimulatorMeterExhausted,
+        is DisconnectCause.SimulatorSessionExpired ->
+            "The glasses session ended. Reconnect before starting a stream."
+      }
 }

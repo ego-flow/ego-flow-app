@@ -10,6 +10,7 @@
 package io.egoflow.app
 
 import android.Manifest.permission.BLUETOOTH_CONNECT
+import android.Manifest.permission.BLUETOOTH_SCAN
 import android.Manifest.permission.CAMERA
 import android.Manifest.permission.POST_NOTIFICATIONS
 import android.Manifest.permission.RECORD_AUDIO
@@ -28,9 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import com.meta.wearable.dat.core.Wearables
-import com.meta.wearable.dat.core.types.Permission
-import com.meta.wearable.dat.core.types.PermissionStatus
 import io.egoflow.app.settings.AuthPrefs
 import io.egoflow.app.settings.RepoPrefs
 import io.egoflow.app.settings.SettingsManager
@@ -41,11 +39,6 @@ import io.egoflow.app.ui.PermissionIntroType
 import io.egoflow.app.ui.theme.EgoFlowTheme
 import io.egoflow.app.ui.theme.ThemePreference
 import io.egoflow.app.wearables.WearablesViewModel
-import kotlin.coroutines.resume
-import kotlinx.coroutines.CancellableContinuation
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 private data class RuntimePermissionDisclosure(
     val permission: String,
@@ -72,6 +65,11 @@ class MainActivity : ComponentActivity() {
             ),
             RuntimePermissionDisclosure(
                 BLUETOOTH_CONNECT,
+                PermissionIntroType.BLUETOOTH,
+                required = true,
+            ),
+            RuntimePermissionDisclosure(
+                BLUETOOTH_SCAN,
                 PermissionIntroType.BLUETOOTH,
                 required = true,
             ),
@@ -124,27 +122,7 @@ class MainActivity : ComponentActivity() {
   private var notificationPermissionSkipped by mutableStateOf(false)
   private var pendingPermissionRequest: List<String> = emptyList()
   private var requiredPermissionsReportedGranted = false
-  private var wearablesInitialized = false
   private var lastReportedNotificationPermission: Boolean? = null
-
-  private var permissionContinuation: CancellableContinuation<PermissionStatus>? = null
-  private val permissionMutex = Mutex()
-  private val permissionsResultLauncher =
-      registerForActivityResult(Wearables.RequestPermissionContract()) { result ->
-        val permissionStatus = result.getOrDefault(PermissionStatus.Denied)
-        permissionContinuation?.resume(permissionStatus)
-        permissionContinuation = null
-      }
-
-  suspend fun requestWearablesPermission(permission: Permission): PermissionStatus {
-    return permissionMutex.withLock {
-      suspendCancellableCoroutine { continuation ->
-        permissionContinuation = continuation
-        continuation.invokeOnCancellation { permissionContinuation = null }
-        permissionsResultLauncher.launch(permission)
-      }
-    }
-  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -192,10 +170,7 @@ class MainActivity : ComponentActivity() {
               errorMessage = permissionPromptError,
           )
         } else {
-          CameraAccessScaffold(
-              viewModel = viewModel,
-              onRequestWearablesPermission = ::requestWearablesPermission,
-          )
+          CameraAccessScaffold(viewModel = viewModel)
         }
       }
     }
@@ -245,7 +220,7 @@ class MainActivity : ComponentActivity() {
         PermissionGateUiState(
             showIntro = introDisclosures.isNotEmpty(),
             introItems =
-                introDisclosures.map { disclosure ->
+                introDisclosures.distinctBy { it.type }.map { disclosure ->
                   PermissionIntroItem(
                       type = disclosure.type,
                       required = disclosure.required,
@@ -279,17 +254,7 @@ class MainActivity : ComponentActivity() {
     }
     requiredPermissionsReportedGranted = true
     val requiredPermissionsResult = REQUIRED_RUNTIME_PERMISSIONS.associateWith { true }
-    viewModel.onPermissionsResult(requiredPermissionsResult) {
-      initializeWearables()
-    }
-  }
-
-  private fun initializeWearables() {
-    if (wearablesInitialized) {
-      return
-    }
-    Wearables.initialize(this)
-    wearablesInitialized = true
+    viewModel.onPermissionsResult(requiredPermissionsResult)
   }
 
   private fun reportNotificationPermission(granted: Boolean) {

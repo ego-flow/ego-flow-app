@@ -7,28 +7,15 @@
  * Modified in this repository for EgoFlow; see THIRD_PARTY_NOTICES.md.
  */
 
-// WearablesUiState - DAT API State Management
-//
-// This data class aggregates DAT API state for the UI layer
+// App-level state derived from Extentos connection state plus EgoFlow UI state.
 
 package io.egoflow.app.wearables
 
-import com.meta.wearable.dat.core.types.DeviceIdentifier
-import com.meta.wearable.dat.core.types.RegistrationState
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentListOf
-
 data class WearablesUiState(
-    val registrationState: RegistrationState = RegistrationState.UNAVAILABLE,
-    val devices: ImmutableList<DeviceIdentifier> = persistentListOf(),
+    val connectionStatus: ExtentosConnectionStatus = ExtentosConnectionStatus.NOT_REGISTERED,
     val recentError: String? = null,
     val recentSuccess: String? = null,
     val isStreaming: Boolean = false,
-    val isGettingStartedSheetVisible: Boolean = false,
-    val isFirmwareUpdateRequired: Boolean = false,
-    val isDatAppUpdateRequired: Boolean = false,
-    val hasActiveDevice: Boolean = false,
-    val canRegister: Boolean = false,
     val isPhoneMode: Boolean = false,
     val isSettingsVisible: Boolean = false,
     val isLoggedIn: Boolean = false,
@@ -41,9 +28,8 @@ data class WearablesUiState(
     // StreamTransitionOverlay.
     val streamTransition: StreamTransition = StreamTransition.NONE,
 ) {
-  val isRegistered: Boolean =
-      registrationState == RegistrationState.REGISTERED ||
-          registrationState == RegistrationState.UNREGISTERING
+  val hasActiveDevice: Boolean
+    get() = connectionStatus.canStream
 }
 
 enum class MainTab {

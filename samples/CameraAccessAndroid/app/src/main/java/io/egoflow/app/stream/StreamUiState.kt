@@ -7,29 +7,24 @@
  * Modified in this repository for EgoFlow; see THIRD_PARTY_NOTICES.md.
  */
 
-// StreamUiState - DAT Camera Streaming UI State
-//
-// This data class manages UI state for camera streaming operations using the DAT API.
+// StreamUiState - EgoFlow capture and transport state.
 
 package io.egoflow.app.stream
 
 import android.graphics.Bitmap
-import com.meta.wearable.dat.camera.types.StreamState
-import com.meta.wearable.dat.core.session.DeviceSessionState
 import io.egoflow.app.core.transport.api.TransportState
 import io.egoflow.app.stream.rtmp.RtmpVideoCodec
 
 enum class StreamingMode { GLASSES, PHONE }
 
+enum class CaptureState {
+  STARTING,
+  STREAMING,
+  STOPPED,
+}
+
 data class StreamUiState(
-    // Device-level session on the glasses (IDLE/STARTING/STARTED/
-    // PAUSED/STOPPING/STOPPED). Null when no glasses session is active
-    // -- e.g. phone-camera mode, or before streaming starts. Sourced
-    // from the active DeviceSession.state; 0.7.0 removed the passive
-    // Wearables.getDeviceSessionState flow, so this only populates while
-    // a glasses session is live.
-    val deviceSessionState: DeviceSessionState? = null,
-    val streamState: StreamState = StreamState.STOPPED,
+    val streamState: CaptureState = CaptureState.STOPPED,
     val transportState: TransportState = TransportState.Idle,
     val capturedPhoto: Bitmap? = null,
     val isShareDialogVisible: Boolean = false,

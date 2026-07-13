@@ -51,8 +51,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.meta.wearable.dat.core.types.Permission
-import com.meta.wearable.dat.core.types.PermissionStatus
 import io.egoflow.app.settings.AuthPrefs
 import io.egoflow.app.settings.SettingsManager
 import io.egoflow.app.ui.theme.EgoFlowTheme
@@ -68,7 +66,6 @@ private enum class SnackbarTone {
 @Composable
 fun CameraAccessScaffold(
     viewModel: WearablesViewModel,
-    onRequestWearablesPermission: suspend (Permission) -> PermissionStatus,
     modifier: Modifier = Modifier,
 ) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -130,7 +127,6 @@ fun CameraAccessScaffold(
           else ->
               MainTabScreen(
                   viewModel = viewModel,
-                  onRequestWearablesPermission = onRequestWearablesPermission,
                   onThemeChanged = { themeMode = it },
               )
         }

@@ -9,8 +9,6 @@
 
 package io.egoflow.app.ui
 
-import android.widget.Toast
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -39,61 +37,40 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Unplug
-import com.meta.wearable.dat.core.types.Permission
-import com.meta.wearable.dat.core.types.PermissionStatus
-import com.meta.wearable.dat.core.types.RegistrationState
 import io.egoflow.app.R
 import io.egoflow.app.ui.theme.LocalEgoFlowColors
 import io.egoflow.app.wearables.WearablesViewModel
-import kotlinx.coroutines.launch
-
-// Amber pair for the "update required" banner -- fixed so it stays legible in either theme,
-// mirroring the reference CameraAccess sample.
-private val UpdateRequiredBackground = Color(0xFFFFF4D6)
-private val UpdateRequiredForeground = Color(0xFF8A4B00)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NonStreamScreen(
     viewModel: WearablesViewModel,
-    onRequestWearablesPermission: suspend (Permission) -> PermissionStatus,
     repository: RecordRepositorySummary?,
     onOpenRepositories: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val gettingStartedSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
     var showDisconnectDialog by remember { mutableStateOf(false) }
-    val isDisconnectEnabled = uiState.registrationState == RegistrationState.REGISTERED
-    val isUpdateRequired = uiState.isFirmwareUpdateRequired || uiState.isDatAppUpdateRequired
-    val activity = LocalActivity.current
-    val context = LocalContext.current
+    val isDisconnectEnabled = uiState.hasActiveDevice
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -112,36 +89,6 @@ fun NonStreamScreen(
                 streamingActive = uiState.isStreaming,
                 onOpenRepositories = onOpenRepositories,
             )
-            if (isUpdateRequired) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    UpdateRequiredBanner(
-                        showFirmware = uiState.isFirmwareUpdateRequired,
-                        showDatApp = uiState.isDatAppUpdateRequired,
-                    )
-                    if (uiState.isFirmwareUpdateRequired) {
-                        PillButton(
-                            label = stringResource(R.string.update_firmware_button_title),
-                            onClick = {
-                                activity?.let { viewModel.openFirmwareUpdate(it) }
-                                    ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
-                            },
-                        )
-                    }
-                    if (uiState.isDatAppUpdateRequired) {
-                        PillButton(
-                            label = stringResource(R.string.update_dat_app_button_title),
-                            onClick = {
-                                activity?.let { viewModel.openDATGlassesAppUpdate(it) }
-                                    ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
-                            },
-                        )
-                    }
-                }
-            }
         }
 
         DisconnectButton(
@@ -153,39 +100,22 @@ fun NonStreamScreen(
         )
 
         RecordStartActions(
-            startGlassesEnabled = uiState.hasActiveDevice && !isUpdateRequired,
-            onStartGlasses = { viewModel.navigateToStreaming(onRequestWearablesPermission) },
+            startGlassesEnabled = uiState.hasActiveDevice,
+            onStartGlasses = { viewModel.navigateToStreaming() },
             onStartPhone = { viewModel.navigateToPhoneMode() },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
-
-        if (uiState.isGettingStartedSheetVisible) {
-            ModalBottomSheet(
-                onDismissRequest = { viewModel.hideGettingStartedSheet() },
-                sheetState = gettingStartedSheetState,
-            ) {
-                GettingStartedSheetContent(
-                    onContinue = {
-                        scope.launch {
-                            gettingStartedSheetState.hide()
-                            viewModel.hideGettingStartedSheet()
-                        }
-                    },
-                )
-            }
-        }
 
         if (showDisconnectDialog) {
             AlertDialog(
                 onDismissRequest = { showDisconnectDialog = false },
                 title = { Text("Disconnect glasses?") },
                 text = {
-                    Text("This unregisters the glasses from the app. You'll need to reconnect before you can stream again.")
+                    Text("This ends the current glasses connection. You'll need to reconnect before streaming again.")
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        activity?.let { viewModel.startUnregistration(it) }
-                            ?: Toast.makeText(context, "Activity not available", Toast.LENGTH_SHORT).show()
+                        viewModel.disconnectGlasses()
                         showDisconnectDialog = false
                     }) {
                         Text(stringResource(R.string.unregister_button_title), color = MaterialTheme.colorScheme.error)
@@ -194,51 +124,6 @@ fun NonStreamScreen(
                 dismissButton = {
                     TextButton(onClick = { showDisconnectDialog = false }) { Text("Cancel") }
                 },
-            )
-        }
-    }
-}
-
-@Composable
-private fun UpdateRequiredBanner(
-    showFirmware: Boolean,
-    showDatApp: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val message = when {
-        showFirmware && showDatApp -> stringResource(R.string.update_required_both_message)
-        showFirmware -> stringResource(R.string.update_required_firmware_message)
-        else -> stringResource(R.string.update_required_dat_app_message)
-    }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(UpdateRequiredBackground)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Icon(
-            imageVector = Lucide.CircleAlert,
-            contentDescription = null,
-            tint = UpdateRequiredForeground,
-            modifier = Modifier.size(24.dp),
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.update_required_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = UpdateRequiredForeground,
-            )
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = UpdateRequiredForeground,
             )
         }
     }
