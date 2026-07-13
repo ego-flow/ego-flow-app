@@ -38,4 +38,6 @@ dependencies {
   // the type here avoids each :transport-* module re-declaring its
   // own wrapper.
   api(libs.mwdat.camera)
+
+  testImplementation("junit:junit:4.13.2")
 }

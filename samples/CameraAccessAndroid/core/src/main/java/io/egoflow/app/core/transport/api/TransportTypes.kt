@@ -29,6 +29,35 @@ enum class VideoCodec(val mimeType: String) {
     HEVC(MediaFormat.MIMETYPE_VIDEO_HEVC),
 }
 
+/**
+ * One packed planar I420 frame captured by the glasses.
+ *
+ * The constructor and [copyI420] both copy the byte array so a vendor SDK or an
+ * asynchronous transport cannot mutate a frame that another layer still owns.
+ */
+class GlassesVideoFrame(
+    i420: ByteArray,
+    val width: Int,
+    val height: Int,
+    val presentationTimeUs: Long,
+) {
+  private val i420Bytes: ByteArray
+
+  init {
+    require(width > 0 && height > 0) { "Frame dimensions must be positive" }
+    require(width % 2 == 0 && height % 2 == 0) { "I420 frame dimensions must be even" }
+    require(presentationTimeUs >= 0L) { "Frame presentation timestamp must not be negative" }
+
+    val expectedSize = width.toLong() * height.toLong() * 3L / 2L
+    require(expectedSize <= Int.MAX_VALUE && i420.size.toLong() == expectedSize) {
+      "I420 buffer length ${i420.size} does not match ${width}x${height} frame size $expectedSize"
+    }
+    i420Bytes = i420.copyOf()
+  }
+
+  fun copyI420(): ByteArray = i420Bytes.copyOf()
+}
+
 /** Why a session stopped. Each value implies a different remediation
  *  posture (retry vs surface error vs treat as user intent). */
 enum class StopReason {
