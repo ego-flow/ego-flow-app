@@ -1,0 +1,37 @@
+{
+  "manifestVersion": 2,
+  "platform": "android",
+  "glasses": "meta_rayban",
+  "appPackage": "io.egoflow.app",
+  "extentos": {
+    "libraryVersion": "1.6.0",
+    "installedAt": "2026-07-13T07:05:51.368Z",
+    "lastUpdatedAt": "2026-07-13T07:05:51.368Z"
+  },
+  "generatedFiles": [
+    {
+      "path": "app/src/main/java/io/egoflow/app/extentos/ExtentosBootstrap.kt",
+      "template": "connection_module",
+      "hash": "sha256:0d4e9939bf4896663575564d433fac5b31dafd39cb6c83ca540a15e9a85a938c",
+      "generatedAt": "2026-07-13T07:05:51.368Z",
+      "generatedByTool": "generateConnectionModule"
+    }
+  ],
+  "permissions": [],
+  "capabilities": [
+    "video_frames"
+  ],
+  "handlerNames": [],
+  "gradle": {
+    "coordinate": "com.extentos:glasses:1.6.0",
+    "buildFile": "app/build.gradle.kts",
+    "additionalArtifacts": [
+      {
+        "coordinate": "com.extentos:glasses-ui:1.6.0",
+        "configuration": "implementation"
+      }
+    ],
+    "minimumAgpVersion": "8.6.0",
+    "minimumGradleVersion": "8.7"
+  }
+}

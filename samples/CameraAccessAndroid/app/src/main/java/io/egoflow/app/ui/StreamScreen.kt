@@ -355,6 +355,7 @@ private fun streamSessionStatusInfo(state: StreamState): StatusInfo {
         StreamState.STARTING -> StatusInfo("STARTING", colors.statusYellow)
         StreamState.STARTED -> StatusInfo("STARTED", colors.statusYellow)
         StreamState.STREAMING -> StatusInfo("STREAMING", colors.statusGreen)
+        StreamState.PAUSED -> StatusInfo("PAUSED", colors.statusYellow)
         StreamState.STOPPING -> StatusInfo("STOPPING", colors.statusYellow)
         StreamState.STOPPED -> StatusInfo("STOPPED", dimmed)
         StreamState.CLOSED -> StatusInfo("CLOSED", dimmed)

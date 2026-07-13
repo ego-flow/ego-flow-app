@@ -10,3 +10,6 @@ samples/CameraAccessAndroid/app/sample.keystore
 
 # Generated media / local runtime output
 samples/video-ingest-server/recordings/
+
+specs/
+tasks/

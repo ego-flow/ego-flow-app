@@ -38,6 +38,8 @@ val localProperties = Properties().apply {
 fun localOrEnvProperty(propertyName: String, envName: String, defaultValue: String = ""): String =
   System.getenv(envName) ?: localProperties.getProperty(propertyName) ?: defaultValue
 
+val extentosProjectKey = localOrEnvProperty("extentos_project_key", "EXTENTOS_PROJECT_KEY")
+
 // Refuse to build a release artifact without real signing credentials instead of
 // silently signing it with a debug key. Guard on the task graph so debug builds
 // (assembleDebug, unit tests) are unaffected; only a requested release
@@ -81,6 +83,8 @@ android {
       localOrEnvProperty("mwdat_application_id", "MWDAT_APPLICATION_ID", "0")
     manifestPlaceholders["mwdatClientToken"] =
       localOrEnvProperty("mwdat_client_token", "MWDAT_CLIENT_TOKEN")
+    buildConfigField("String", "EXTENTOS_SESSION_URL", "null")
+    buildConfigField("String", "EXTENTOS_PROJECT_KEY", "\"$extentosProjectKey\"")
   }
 
   signingConfigs {
@@ -129,6 +133,8 @@ dependencies {
   implementation(libs.androidx.material3)
   implementation(libs.compose.icons.lucide)
   implementation(libs.kotlinx.collections.immutable)
+  implementation(libs.extentos.glasses)
+  implementation(libs.extentos.glasses.ui)
   implementation(libs.mwdat.core)
   implementation(libs.mwdat.camera)
   // EgoFlow additions
