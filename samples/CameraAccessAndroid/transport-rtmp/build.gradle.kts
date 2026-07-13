@@ -37,8 +37,6 @@ android {
 
 dependencies {
   implementation(project(":core"))
-  // Wearables SDK supplies VideoFrame consumed by RtmpStreamer.
-  implementation(libs.mwdat.camera)
   // EgoFlow REST control plane (login → ticket → heartbeat → stop) is
   // OkHttp + Gson. Coroutines are already exposed transitively via :core.
   implementation(libs.okhttp)

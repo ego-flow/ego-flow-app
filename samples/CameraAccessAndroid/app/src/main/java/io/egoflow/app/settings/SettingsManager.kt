@@ -58,10 +58,6 @@ object SettingsManager {
         get() = RtmpAudioSource.fromPreferenceValue(prefs.getString("audioSource", RtmpAudioSource.AUTO.preferenceValue))
         set(value) = prefs.edit().putString("audioSource", value.preferenceValue).apply()
 
-    var rtmpCompressVideo: Boolean
-        get() = prefs.getBoolean("rtmpCompressVideo", false)
-        set(value) = prefs.edit().putBoolean("rtmpCompressVideo", value).apply()
-
     var rtmpVideoCodec: RtmpVideoCodec
         get() = RtmpVideoCodec.fromPreferenceValue(prefs.getString("rtmpVideoCodec", DEFAULT_RTMP_VIDEO_CODEC))
         set(value) = prefs.edit().putString("rtmpVideoCodec", value.preferenceValue).apply()

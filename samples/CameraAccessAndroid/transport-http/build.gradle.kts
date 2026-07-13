@@ -36,8 +36,6 @@ dependencies {
   // the new /http-streams REST methods, IngestType, and the encrypted auth/repo
   // prefs that already live in the RTMP module.
   implementation(project(":transport-rtmp"))
-  // Wearables SDK supplies the VideoFrame consumed from the glasses path.
-  implementation(libs.mwdat.camera)
   // Chunk upload is plain OkHttp.
   implementation(libs.okhttp)
 

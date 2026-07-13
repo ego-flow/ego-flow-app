@@ -36,8 +36,6 @@ dependencies {
   // close-intent) and the encrypted auth/repo prefs that already live in the RTMP
   // module; the WHIP flow shares those steps verbatim.
   implementation(project(":transport-rtmp"))
-  // Wearables SDK supplies the VideoFrame consumed from the glasses path.
-  implementation(libs.mwdat.camera)
   // WHIP signaling (POST SDP offer / DELETE session) is plain OkHttp.
   implementation(libs.okhttp)
   // libwebrtc: PeerConnection + I420 frame ingestion + H.264 encode.

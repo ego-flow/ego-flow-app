@@ -5,7 +5,6 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.util.Log
-import com.meta.wearable.dat.camera.types.VideoFrame
 import io.egoflow.app.core.encoder.VideoEncoder
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.VideoCodec
@@ -115,7 +114,6 @@ class RtmpStreamer(
     private var lastAudioPresentationTimeUs = -1L
     private var audioCaptureStarted = false
     private var firstVideoSampleSent = false
-    private var compressedVideoConfigSent = false
 
     // -- Shared atomic state ------------------------------------------------
     private val sessionId = AtomicLong(0L)
@@ -221,20 +219,6 @@ class RtmpStreamer(
         )
     }
 
-    // Temporary compatibility overload for the raw DAT path. Removed once
-    // StreamViewModel collects Extentos frames directly.
-    fun sendGlassesFrame(videoFrame: VideoFrame) {
-        val sourceBuffer = videoFrame.buffer.duplicate()
-        val frameData = ByteArray(sourceBuffer.remaining())
-        sourceBuffer.get(frameData)
-        sendI420GlassesFrame(
-            frameData = frameData,
-            width = videoFrame.width,
-            height = videoFrame.height,
-            sourcePtsUs = videoFrame.presentationTimeUs,
-        )
-    }
-
     private fun sendI420GlassesFrame(
         frameData: ByteArray,
         width: Int,
@@ -251,63 +235,6 @@ class RtmpStreamer(
             } catch (error: Exception) {
                 failActiveSession(expectedSessionId, "Failed to send glasses frame", "Glasses frame failed", error)
             }
-        }
-    }
-
-    fun sendCompressedGlassesFrame(videoFrame: VideoFrame) {
-        if (!isEnabled()) return
-
-        val sourceBuffer = videoFrame.buffer.duplicate()
-        val bytes = ByteArray(sourceBuffer.remaining())
-        sourceBuffer.get(bytes)
-
-        val sourcePtsUs = videoFrame.presentationTimeUs
-        // 0.7.0 surfaces HEVC codec config (VPS/SPS/PPS) as its own frame flagged
-        // isCodecConfig, separate from the payload slices. Such a frame carries only
-        // parameter sets, so it becomes a VideoConfig and must NOT be enqueued as a sample.
-        val isCodecConfig = videoFrame.isCodecConfig
-        val expectedSessionId = sessionId.get()
-
-        codecExecutor.execute {
-            if (!isActiveSession(expectedSessionId)) return@execute
-            try {
-                if (isCodecConfig) {
-                    sendCompressedVideoConfig(expectedSessionId, bytes)
-                    return@execute
-                }
-
-                // Fallback for SDKs/streams that still inline parameter sets in the first
-                // (key)frame rather than emitting a dedicated isCodecConfig frame.
-                if (!compressedVideoConfigSent) {
-                    sendCompressedVideoConfig(expectedSessionId, bytes)
-                }
-
-                val isKeyFrame = RtmpVideoPacketizer.containsHevcKeyFrame(bytes)
-                val bufferInfo = MediaCodec.BufferInfo().apply {
-                    offset = 0
-                    size = bytes.size
-                    presentationTimeUs = glassesFramePresentationTimeUs(sourcePtsUs)
-                    flags = if (isKeyFrame) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
-                }
-                enqueueData(SendItem.VideoSample(expectedSessionId, RtmpVideoCodec.H265, bytes, bufferInfo, isKeyFrame))
-            } catch (error: Exception) {
-                failActiveSession(expectedSessionId, "Failed to send compressed glasses frame", "Compressed frame failed", error)
-            }
-        }
-    }
-
-    // Extracts VPS+SPS+PPS from an HEVC bitstream and enqueues a single VideoConfig.
-    // Idempotent across a session via compressedVideoConfigSent. Runs on T_codec.
-    private fun sendCompressedVideoConfig(expectedSessionId: Long, bytes: ByteArray) {
-        if (compressedVideoConfigSent) return
-        val nalUnits = RtmpVideoPacketizer.extractNalUnits(bytes)
-        val vps = nalUnits.filter { RtmpVideoPacketizer.hevcNalUnitType(it) == RtmpVideoPacketizer.HEVC_NAL_VPS }
-        val sps = nalUnits.filter { RtmpVideoPacketizer.hevcNalUnitType(it) == RtmpVideoPacketizer.HEVC_NAL_SPS }
-        val pps = nalUnits.filter { RtmpVideoPacketizer.hevcNalUnitType(it) == RtmpVideoPacketizer.HEVC_NAL_PPS }
-        if (vps.isNotEmpty() && sps.isNotEmpty() && pps.isNotEmpty()) {
-            enqueueData(SendItem.VideoConfig(expectedSessionId, RtmpVideoCodec.H265, buildHevcMediaFormat(vps, sps, pps)))
-            compressedVideoConfigSent = true
-            RtmpDiagnostics.log("Sent compressed HEVC config (VPS+SPS+PPS extracted from frame)")
         }
     }
 
@@ -624,7 +551,6 @@ class RtmpStreamer(
         lastPresentationTimeUs = -1L
         glassesPtsOriginUs = -1L
         firstVideoSampleSent = false
-        compressedVideoConfigSent = false
         publishUrl = null
         diagnosticsContext = null
 
@@ -678,24 +604,6 @@ class RtmpStreamer(
         RtmpDiagnostics.log("HEVC $stage failed, retrying with H.264")
         restartEncoder(width, height, RtmpVideoCodec.H264)
         return true
-    }
-
-    private fun buildHevcMediaFormat(
-        vpsUnits: List<ByteArray>,
-        spsUnits: List<ByteArray>,
-        ppsUnits: List<ByteArray>,
-    ): MediaFormat {
-        val startCode = byteArrayOf(0x00, 0x00, 0x00, 0x01)
-        val allUnits = vpsUnits + spsUnits + ppsUnits
-        val csd0 = ByteArray(allUnits.sumOf { startCode.size + it.size })
-        var offset = 0
-        for (nal in allUnits) {
-            System.arraycopy(startCode, 0, csd0, offset, startCode.size); offset += startCode.size
-            System.arraycopy(nal, 0, csd0, offset, nal.size); offset += nal.size
-        }
-        return MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, 0, 0).apply {
-            setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(csd0))
-        }
     }
 
     // -- Send-queue helpers (run on T_codec) --------------------------------

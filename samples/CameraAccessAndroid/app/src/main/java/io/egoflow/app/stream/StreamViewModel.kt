@@ -406,12 +406,10 @@ class StreamViewModel(
   private fun effectiveCodec(): VideoCodec =
       when {
         // WHIP media is whatever the SDP negotiates (libwebrtc publishes H.264),
-        // and there's no on-device HEVC pass-through, so the codec/compress
-        // settings don't apply.
+        // and the app does not control the negotiated codec.
         SettingsManager.transportMode == TransportId.WHIP -> VideoCodec.H264
         // Extentos exposes JPEG frames, so RTMP and HTTP both use the existing
-        // on-device encoder. The old DAT HEVC pass-through toggle no longer changes
-        // capture format or codec selection.
+        // on-device encoder.
         else -> SettingsManager.rtmpVideoCodec.toCoreCodec()
       }
 

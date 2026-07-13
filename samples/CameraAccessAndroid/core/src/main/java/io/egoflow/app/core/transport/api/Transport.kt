@@ -8,13 +8,11 @@
  *
  * StreamViewModel depends on this interface ONLY.
  *
- * Frame-input methods take RAW frames (VideoFrame / Bitmap) on
+ * Frame-input methods take EgoFlow-owned raw I420 frames on
  * purpose: encoding settings (codec, bitrate, GOP) differ per
  * transport (RTMP wants baseline H.264; slab-append wants HEVC
  * main with larger GOPs), so each implementation owns its own
- * MediaCodec. Pre-encoded glasses pass-through (HEVC NALs already
- * delivered by the device) is exposed as a separate path so the
- * encoder is skipped entirely.
+ * MediaCodec.
  *
  * If a method here starts to feel transport-specific (publish
  * tickets, byte offsets, HLS URLs, ...) DO NOT add it -- that's the
@@ -25,7 +23,6 @@
 
 package io.egoflow.app.core.transport.api
 
-import com.meta.wearable.dat.camera.types.VideoFrame
 import kotlinx.coroutines.flow.StateFlow
 
 interface Transport {
@@ -47,18 +44,8 @@ interface Transport {
    */
   suspend fun startSession(sessionId: String, codec: VideoCodec)
 
-  /** Vendor-neutral packed I420 frame. Implementations migrate to this overload
-   *  before the legacy Meta frame methods are removed. */
+  /** Vendor-neutral packed I420 frame from the active glasses integration. */
   fun sendGlassesFrame(frame: GlassesVideoFrame)
-
-  /** Raw YUV glasses frame. Transport encodes via its own MediaCodec
-   *  pipeline. Non-blocking: queue + return; back-pressure is the
-   *  transport's concern. */
-  fun sendGlassesFrame(frame: VideoFrame)
-
-  /** Pre-encoded HEVC NALs delivered by the glasses (compressed
-   *  mode). Transport packages and ships without re-encoding. */
-  fun sendGlassesFrameCompressed(frame: VideoFrame)
 
   /** Planar I420 phone-camera frame (already upright, even dimensions).
    *  CameraX delivers YUV420, so the camera layer repacks to I420 directly —

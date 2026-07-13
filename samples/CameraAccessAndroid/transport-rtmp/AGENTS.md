@@ -1,7 +1,7 @@
 # :transport-rtmp
 
 RTMP-over-TCP transport that talks to MediaMTX via ego-flow-server's
-ticket / heartbeat REST control plane.
+session and publish-ticket REST control plane.
 
 ## What lives here
 
@@ -47,7 +47,6 @@ All RTMP- and ego-flow-specific code:
 
 ```kotlin
 implementation(project(":core"))   // Transport interface + types
-implementation(libs.mwdat.camera)  // VideoFrame for the glasses path
 implementation(libs.okhttp)        // EgoFlow REST plane
 implementation(libs.gson)
 testImplementation("junit:junit:4.13.2")
@@ -75,13 +74,7 @@ Coroutines come transitively from `:core` (which exposes
 
 ## RtmpTransport — current status
 
-Lives in `transport/rtmp/RtmpTransport.kt`. Implements
-`core.Transport`. Composes its own `RtmpStreamer` +
-`EgoFlowBackendClient` and runs a heartbeat coroutine on the
-constructor-supplied `applicationScope`. State surfaces via
-`StateFlow<TransportState>`.
-
-**Not yet on the runtime path.** StreamViewModel in `:app` still
-calls `RtmpStreamer` + `EgoFlowBackendClient` directly. The
-cutover lands as the first task of Phase 2 — once SlabTransport
-exists, the DI swap motivates the StreamViewModel refactor.
+Lives in `transport/rtmp/RtmpTransport.kt` and is on the active
+runtime path through `core.Transport`. It accepts only EgoFlow-owned
+I420 `GlassesVideoFrame` values; SDK-specific frames must never enter
+this module. State surfaces via `StateFlow<TransportState>`.

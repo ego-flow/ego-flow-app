@@ -12,8 +12,7 @@
  *
  * Codec note: WHIP media is whatever the SDP negotiates -- libwebrtc offers
  * H.264, which MediaMTX accepts -- so the requested [VideoCodec] is informational
- * and the reported actualCodec is always H264. On-device HEVC pass-through
- * (compressed glasses frames) has no place in a WebRTC pipeline and is dropped.
+ * and the reported actualCodec is always H264.
  *
  * Structurally mirrors RtmpTransport so the two transports read the same.
  */
@@ -21,7 +20,6 @@ package io.egoflow.app.transport.whip
 
 import android.content.Context
 import android.util.Log
-import com.meta.wearable.dat.camera.types.VideoFrame
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.StopReason
 import io.egoflow.app.core.transport.api.Transport
@@ -150,16 +148,6 @@ class WhipTransport(
     // State transitions to Streaming asynchronously via pc.onConnected.
   }
 
-  override fun sendGlassesFrame(frame: VideoFrame) {
-    val source = frame.buffer.duplicate()
-    val bytes = ByteArray(source.remaining())
-    source.get(bytes)
-    // Wearables PTS is microseconds; WebRTC frame timestamps are nanoseconds.
-    if (peer?.feedI420(bytes, frame.width, frame.height, frame.presentationTimeUs * 1_000L) == true) {
-      totalVideoSamplesSent.incrementAndGet()
-    }
-  }
-
   override fun sendGlassesFrame(frame: GlassesVideoFrame) {
     if (
         peer?.feedI420(
@@ -171,12 +159,6 @@ class WhipTransport(
     ) {
       totalVideoSamplesSent.incrementAndGet()
     }
-  }
-
-  override fun sendGlassesFrameCompressed(frame: VideoFrame) {
-    // WebRTC re-encodes from raw frames, so pre-encoded HEVC has nowhere to go.
-    // The ViewModel forces compression off for WHIP; this guards the edge case.
-    logCompressedDropOnce()
   }
 
   override fun sendPhoneFrame(i420: ByteArray, width: Int, height: Int) {
@@ -292,12 +274,6 @@ class WhipTransport(
         .toString().trimEnd('/')
   }
 
-  @Volatile private var compressedDropLogged = false
-  private fun logCompressedDropOnce() {
-    if (compressedDropLogged) return
-    compressedDropLogged = true
-    Log.w(TAG, "Dropping compressed (on-device HEVC) frames: unsupported on the WHIP/WebRTC path")
-  }
 }
 
 // Whether a stop is a deliberate, graceful end that should record

@@ -17,7 +17,6 @@
 package io.egoflow.app.transport.http
 
 import android.util.Log
-import com.meta.wearable.dat.camera.types.VideoFrame
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.StopReason
 import io.egoflow.app.core.transport.api.Transport
@@ -82,13 +81,6 @@ class HttpTransport(
         _state.value = TransportState.Streaming(sessionId, codec)
     }
 
-    override fun sendGlassesFrame(frame: VideoFrame) {
-        val source = frame.buffer.duplicate()
-        val bytes = ByteArray(source.remaining())
-        source.get(bytes)
-        recorder?.queueGlassesFrame(bytes, frame.width, frame.height, frame.presentationTimeUs)
-    }
-
     override fun sendGlassesFrame(frame: GlassesVideoFrame) {
         recorder?.queueGlassesFrame(
             frame.copyI420(),
@@ -96,13 +88,6 @@ class HttpTransport(
             frame.height,
             frame.presentationTimeUs,
         )
-    }
-
-    override fun sendGlassesFrameCompressed(frame: VideoFrame) {
-        // HTTP re-encodes from raw YUV via the on-device encoder; pre-encoded HEVC
-        // pass-through has nowhere to go. The ViewModel forces compression off for
-        // HTTP; this guards the edge case.
-        logCompressedDropOnce()
     }
 
     override fun sendPhoneFrame(i420: ByteArray, width: Int, height: Int) {
@@ -160,12 +145,6 @@ class HttpTransport(
         else -> TransportFailureReason.NETWORK
     }
 
-    @Volatile private var compressedDropLogged = false
-    private fun logCompressedDropOnce() {
-        if (compressedDropLogged) return
-        compressedDropLogged = true
-        Log.w(TAG, "Dropping compressed (on-device HEVC) frames: HTTP path re-encodes from raw YUV")
-    }
 }
 
 // A graceful stop is a deliberate, normal end whose recording is worth finishing.

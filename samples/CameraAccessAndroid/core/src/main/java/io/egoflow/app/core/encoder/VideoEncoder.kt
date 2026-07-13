@@ -4,8 +4,8 @@
  * Knows how to negotiate color format, queue I420 frames, and drain
  * encoded NALs out of MediaCodec. Does NOT know about RTMP, ego-flow
  * auth, slab-append, codec-fallback policy, or PTS bookkeeping
- * (callers control PTS so the same monotonic timeline drives both
- * the encoder path and the compressed-glasses pass-through).
+ * (callers control PTS so every transport preserves the same
+ * monotonic capture timeline).
  *
  * Lives in :core so :transport-rtmp and :transport-slab can both
  * use the same encoder pipeline -- no per-transport duplication.
@@ -81,8 +81,7 @@ class VideoEncoder {
     }
 
     /** Push one I420 frame into the encoder's input queue. PTS is
-     *  caller-supplied so a single monotonic clock can drive both
-     *  the encoder-path and the compressed-glasses pass-through. */
+     *  caller-supplied so the encoder preserves the capture timeline. */
     fun queue(i420Frame: ByteArray, width: Int, height: Int, presentationTimeUs: Long) {
         val enc = encoder ?: return
         check(width == configuredWidth && height == configuredHeight) {

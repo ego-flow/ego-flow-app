@@ -3,7 +3,7 @@ package io.egoflow.app.stream.rtmp
 /**
  * Which microphone feeds the streamed audio.
  *
- * The Meta glasses mic is not delivered as DAT audio frames; it is shared through the system
+ * The Meta glasses mic is shared through the Android system
  * Bluetooth stack (HFP/SCO). [RtmpAudioRecorder] captures it by routing the communication audio
  * path to the glasses' Bluetooth device and recording with a VOICE_COMMUNICATION source.
  */

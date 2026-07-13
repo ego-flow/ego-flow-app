@@ -7,18 +7,7 @@
  * Modified in this repository for EgoFlow; see THIRD_PARTY_NOTICES.md.
  */
 
-// CameraAccessScaffold - DAT Application Navigation Orchestrator
-//
-// This scaffold demonstrates a typical DAT application navigation pattern based on device
-// registration and streaming states from the DAT API.
-//
-// DAT State-Based Navigation:
-// - HomeScreen: When NOT registered (uiState.isRegistered = false) Shows initial registration UI
-//   calling Wearables.startRegistration()
-// - NonStreamScreen: When registered (uiState.isRegistered = true) but not streaming Shows device
-//   selection, permission checking, and pre-streaming setup
-// - StreamScreen: When actively streaming (uiState.isStreaming = true) Shows live video from
-//   the camera Stream.videoStream and photo capture UI
+// Root Compose navigation for login, Extentos connection, settings, and streaming.
 
 package io.egoflow.app.ui
 

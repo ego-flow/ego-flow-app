@@ -16,9 +16,8 @@
  * the WHIP exchange a single POST (no PATCH/trickle), which is the simplest
  * reliable interop with MediaMTX.
  *
- * Note: org.webrtc.VideoFrame (used here) is distinct from the Wearables SDK's
- * VideoFrame consumed by WhipTransport -- the two never meet because frames
- * cross this boundary as plain I420 byte arrays.
+ * Note: org.webrtc.VideoFrame (used here) is distinct from EgoFlow's
+ * GlassesVideoFrame; frames cross this boundary as plain I420 byte arrays.
  */
 package io.egoflow.app.transport.whip
 

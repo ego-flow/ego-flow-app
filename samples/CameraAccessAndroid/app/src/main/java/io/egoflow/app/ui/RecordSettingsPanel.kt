@@ -70,7 +70,6 @@ fun RecordSettingsPanel(
     var transportMode by remember { mutableStateOf(SettingsManager.recordTransportMode()) }
     var audioEnabled by remember { mutableStateOf(SettingsManager.rtmpAudioEnabled) }
     var audioSource by remember { mutableStateOf(SettingsManager.audioSource) }
-    var compressVideo by remember { mutableStateOf(SettingsManager.rtmpCompressVideo) }
     var videoCodec by remember { mutableStateOf(SettingsManager.rtmpVideoCodec) }
     var videoQuality by remember { mutableStateOf(SettingsManager.videoQuality) }
     var advancedExpanded by remember { mutableStateOf(false) }
@@ -196,9 +195,7 @@ fun RecordSettingsPanel(
                     )
                 }
                 RecordSettingsDivider()
-                val codecControlEnabled =
-                    !streamingActive &&
-                        !(transportMode == TransportId.RTMP && compressVideo)
+                val codecControlEnabled = !streamingActive
                 SegmentedColumn(
                     label = "Video codec",
                     description = "H.265 reduces bandwidth. Applies to RTMP and HTTP modes.",
@@ -217,21 +214,6 @@ fun RecordSettingsPanel(
                         enabled = codecControlEnabled,
                     )
                 }
-                RecordSettingsDivider()
-                SettingsToggleRow(
-                    label = "Compress on device",
-                    description = "Request HEVC frames directly from the glasses. (RTMP only.)",
-                    checked = compressVideo,
-                    onCheckedChange = { enabled ->
-                        compressVideo = enabled
-                        SettingsManager.rtmpCompressVideo = enabled
-                        if (enabled) {
-                            videoCodec = RtmpVideoCodec.H265
-                            SettingsManager.rtmpVideoCodec = RtmpVideoCodec.H265
-                        }
-                    },
-                    enabled = !streamingActive && transportMode == TransportId.RTMP,
-                )
             }
         }
     }

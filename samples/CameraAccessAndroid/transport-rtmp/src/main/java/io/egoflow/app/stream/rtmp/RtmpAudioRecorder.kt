@@ -13,7 +13,7 @@ import android.util.Log
  * Captures PCM audio for the RTMP stream from either the phone or the Meta glasses microphone,
  * depending on [audioSourceProvider].
  *
- * Glasses audio is not exposed as DAT frames; it is shared through the system Bluetooth stack
+ * Glasses audio is shared through the Android system Bluetooth stack
  * (HFP/SCO). To capture it we route the communication audio path to the glasses' Bluetooth device
  * via [AudioManager] and record with [MediaRecorder.AudioSource.VOICE_COMMUNICATION]. The phone mic
  * uses the plain [MediaRecorder.AudioSource.MIC] path with no routing. Routing is reverted on [stop].

@@ -5,32 +5,29 @@ module.
 
 ## What lives here
 
-Today, just the **Transport seam**:
+The vendor-neutral transport seam and shared media conversion:
 
 - `transport/api/Transport.kt` — the 5-method interface every outbound
   protocol (RTMP, slab-append, future ones) implements
 - `transport/api/TransportTypes.kt` — `TransportId`, `VideoCodec`,
-  `StopReason`, `EncodedFrame`, `TransportState`
+  `StopReason`, `GlassesVideoFrame`, `EncodedFrame`, `TransportState`
 - `transport/api/TransportFactory.kt` — factory + `TransportDeps`
   container; the registry pattern `:app`'s `Application` class wires
   up at boot
-
-Phase 2 will pull in more (Wearables glue, MediaCodec wrapper,
-foreground service, presentation queue, …) as SlabTransport reveals
-what's actually shared. Until then, those utilities stay in `:app`
-even though they're conceptually module-shareable — moving them
-without a second consumer is premature.
+- `encoder/YuvFrameConverter.kt` — shared I420/NV12, rotation, Bitmap,
+  and ARGB-to-I420 conversion
 
 ## Dependency direction
 
 ```
 :app ──▶ :transport-rtmp ──▶ :core
-       └──▶ :transport-slab (Phase 2) ──▶ :core
+       ├──▶ :transport-whip ──▶ :core
+       └──▶ :transport-http ──▶ :core
 ```
 
 `:core` depends on **no other workspace module**. Only platform
-(android.*), Meta SDK (`mwdat-camera` for `VideoFrame` at the
-Transport boundary), and kotlinx-coroutines-core.
+(`android.*`) and kotlinx-coroutines-core are allowed. SDK-owned
+frame types must be normalized by `:app` before crossing this boundary.
 
 If you find yourself wanting to `import` something from
 `io.egoflow.app.{stream,
@@ -55,10 +52,10 @@ The interface is intentionally THIN:
 interface Transport {
   val state: StateFlow<TransportState>
   suspend fun startSession(sessionId: String, codec: VideoCodec)
-  fun sendGlassesFrame(frame: VideoFrame)
-  fun sendGlassesFrameCompressed(frame: VideoFrame)
-  fun sendBitmapFrame(bitmap: Bitmap)
+  fun sendGlassesFrame(frame: GlassesVideoFrame)
+  fun sendPhoneFrame(i420: ByteArray, width: Int, height: Int)
   suspend fun stopSession(reason: StopReason)
+  fun videoFramesSent(): Long
 }
 ```
 

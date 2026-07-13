@@ -22,7 +22,7 @@ import kotlin.math.sqrt
  * Debug-only helper that lets us answer "which microphone are we actually capturing — the phone or
  * the Meta glasses?".
  *
- * The Wearables Device Access Toolkit does not deliver glasses audio as frames; it shares mic/speaker
+ * The glasses mic and speaker are exposed through Android's system Bluetooth routing
  * access through the system Bluetooth stack (HFP/SCO). So to capture the glasses microphone you route
  * the *communication* audio path to the glasses' Bluetooth device via [AudioManager] and capture with
  * a [MediaRecorder.AudioSource.VOICE_COMMUNICATION] source. This class exposes that routing plus a
