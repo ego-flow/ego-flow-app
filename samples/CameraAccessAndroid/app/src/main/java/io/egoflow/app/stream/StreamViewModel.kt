@@ -20,6 +20,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.extentos.glasses.core.GlassesState
 import com.extentos.glasses.core.VideoFrameConfig
 import io.egoflow.app.R
 import io.egoflow.app.core.encoder.YuvFrameConverter
@@ -134,6 +135,7 @@ class StreamViewModel(
 
   init {
     collectTransportState()
+    collectGlassesConnectionState()
   }
 
   // flatMapLatest re-subscribes to the new transport's state automatically
@@ -142,6 +144,20 @@ class StreamViewModel(
   private fun collectTransportState() {
     viewModelScope.launch {
       transportHolder.flatMapLatest { it.state }.collect { reflectTransportState(it) }
+    }
+  }
+
+  private fun collectGlassesConnectionState() {
+    viewModelScope.launch {
+      glasses.connection.state.collect { state ->
+        val glassesCaptureIsActive =
+            _uiState.value.streamingMode == StreamingMode.GLASSES && videoJob?.isActive == true
+        if (state !is GlassesState.Active && glassesCaptureIsActive && !stopRequested) {
+          Log.w(TAG, "Extentos connection left Active during glasses capture")
+          stopStream(StopReason.GLASSES_STOP)
+          wearablesViewModel.onStreamFailed()
+        }
+      }
     }
   }
 
