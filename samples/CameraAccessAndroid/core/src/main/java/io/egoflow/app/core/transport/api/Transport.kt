@@ -47,6 +47,12 @@ interface Transport {
    */
   suspend fun startSession(sessionId: String, codec: VideoCodec)
 
+  /** Vendor-neutral packed I420 frame. Implementations migrate to this overload
+   *  before the legacy Meta frame methods are removed. */
+  fun sendGlassesFrame(frame: GlassesVideoFrame) {
+    throw UnsupportedOperationException("Neutral glasses frames are not supported by this transport")
+  }
+
   /** Raw YUV glasses frame. Transport encodes via its own MediaCodec
    *  pipeline. Non-blocking: queue + return; back-pressure is the
    *  transport's concern. */

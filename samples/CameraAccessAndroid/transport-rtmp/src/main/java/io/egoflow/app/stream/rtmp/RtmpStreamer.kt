@@ -7,6 +7,7 @@ import android.media.MediaFormat
 import android.util.Log
 import com.meta.wearable.dat.camera.types.VideoFrame
 import io.egoflow.app.core.encoder.VideoEncoder
+import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.VideoCodec
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
@@ -20,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Core flow:
  * 1. start(publishUrl, codec) → enqueue SendItem.Connect on the sender queue → T_sender performs the RTMP handshake
- * 2. sendGlassesFrame(VideoFrame) → YUV encode on T_codec → enqueue the encoded sample as a SendItem
+ * 2. sendGlassesFrame(GlassesVideoFrame) → YUV encode on T_codec → enqueue the encoded sample as a SendItem
  *    → T_sender drains the queue and calls into the publisher
  * 3. sendPhoneFrame(I420) → feed the encoder directly (camera already delivers I420), then the same path
  * 4. stop() → encoder EOS → drain remaining samples through the queue, then enqueue SendItem.Close
@@ -211,18 +212,42 @@ class RtmpStreamer(
     // showed up as >30fps on the receiver; sourcing PTS from the device clock preserves the actual
     // 30fps cadence regardless of transport jitter. Mirrors the reference PresentationQueue's use
     // of videoFrame.presentationTimeUs as its base.
+    fun sendGlassesFrame(videoFrame: GlassesVideoFrame) {
+        sendI420GlassesFrame(
+            frameData = videoFrame.copyI420(),
+            width = videoFrame.width,
+            height = videoFrame.height,
+            sourcePtsUs = videoFrame.presentationTimeUs,
+        )
+    }
+
+    // Temporary compatibility overload for the raw DAT path. Removed once
+    // StreamViewModel collects Extentos frames directly.
     fun sendGlassesFrame(videoFrame: VideoFrame) {
-        if (!isEnabled()) return
         val sourceBuffer = videoFrame.buffer.duplicate()
         val frameData = ByteArray(sourceBuffer.remaining())
         sourceBuffer.get(frameData)
-        val sourcePtsUs = videoFrame.presentationTimeUs
+        sendI420GlassesFrame(
+            frameData = frameData,
+            width = videoFrame.width,
+            height = videoFrame.height,
+            sourcePtsUs = videoFrame.presentationTimeUs,
+        )
+    }
+
+    private fun sendI420GlassesFrame(
+        frameData: ByteArray,
+        width: Int,
+        height: Int,
+        sourcePtsUs: Long,
+    ) {
+        if (!isEnabled()) return
         val expectedSessionId = sessionId.get()
         codecExecutor.execute {
             if (!isActiveSession(expectedSessionId)) return@execute
             try {
-                ensureStarted(videoFrame.width, videoFrame.height)
-                queueFrame(frameData, videoFrame.width, videoFrame.height, glassesFramePresentationTimeUs(sourcePtsUs))
+                ensureStarted(width, height)
+                queueFrame(frameData, width, height, glassesFramePresentationTimeUs(sourcePtsUs))
             } catch (error: Exception) {
                 failActiveSession(expectedSessionId, "Failed to send glasses frame", "Glasses frame failed", error)
             }

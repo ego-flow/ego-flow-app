@@ -18,6 +18,7 @@ package io.egoflow.app.transport.rtmp
 import android.content.Context
 import android.util.Log
 import com.meta.wearable.dat.camera.types.VideoFrame
+import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.StopReason
 import io.egoflow.app.core.transport.api.Transport
 import io.egoflow.app.core.transport.api.TransportFailureReason
@@ -156,6 +157,10 @@ class RtmpTransport(
   }
 
   override fun sendGlassesFrame(frame: VideoFrame) {
+    streamer.sendGlassesFrame(frame)
+  }
+
+  override fun sendGlassesFrame(frame: GlassesVideoFrame) {
     streamer.sendGlassesFrame(frame)
   }
 
