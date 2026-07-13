@@ -47,8 +47,8 @@ import com.composables.icons.lucide.Globe
 import com.composables.icons.lucide.Lock
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Wrench
-import com.meta.wearable.dat.camera.types.VideoQuality
 import io.egoflow.app.core.transport.api.TransportId
+import io.egoflow.app.settings.GlassesVideoQuality
 import io.egoflow.app.settings.SettingsManager
 import io.egoflow.app.stream.rtmp.RtmpAudioSource
 import io.egoflow.app.stream.rtmp.RtmpVideoCodec
@@ -109,9 +109,9 @@ fun RecordSettingsPanel(
             ) {
                 SegmentedControl(
                     options = listOf(
-                        "Low" to VideoQuality.LOW,
-                        "Medium" to VideoQuality.MEDIUM,
-                        "High" to VideoQuality.HIGH,
+                        "Low" to GlassesVideoQuality.LOW,
+                        "Medium" to GlassesVideoQuality.MEDIUM,
+                        "High" to GlassesVideoQuality.HIGH,
                     ),
                     selected = videoQuality,
                     onSelected = {
@@ -120,9 +120,9 @@ fun RecordSettingsPanel(
                     },
                     subLabel = {
                         when (it) {
-                            VideoQuality.LOW -> "360x640"
-                            VideoQuality.MEDIUM -> "504x896"
-                            VideoQuality.HIGH -> "720x1280"
+                            GlassesVideoQuality.LOW -> "360x640"
+                            GlassesVideoQuality.MEDIUM -> "504x896"
+                            GlassesVideoQuality.HIGH -> "720x1280"
                         }
                     },
                     enabled = !streamingActive,

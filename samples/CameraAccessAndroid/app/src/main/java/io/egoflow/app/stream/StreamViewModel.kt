@@ -30,6 +30,7 @@ import com.meta.wearable.dat.camera.types.StreamConfiguration
 import com.meta.wearable.dat.camera.types.StreamError
 import com.meta.wearable.dat.camera.types.StreamState
 import com.meta.wearable.dat.camera.types.VideoFrame
+import com.meta.wearable.dat.camera.types.VideoQuality as MetaVideoQuality
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.DeviceSelector
 import com.meta.wearable.dat.core.session.DeviceSession
@@ -46,6 +47,7 @@ import io.egoflow.app.core.transport.api.TransportStartException
 import io.egoflow.app.core.transport.api.TransportState
 import io.egoflow.app.core.transport.api.VideoCodec
 import io.egoflow.app.phone.PhoneCameraManager
+import io.egoflow.app.settings.GlassesVideoQuality
 import io.egoflow.app.settings.SettingsManager
 import io.egoflow.app.stream.rtmp.RtmpVideoCodec
 import io.egoflow.app.transport.http.HttpTransportFactory
@@ -355,7 +357,7 @@ class StreamViewModel(
           val addResult =
               deviceSession.addStream(
                   StreamConfiguration(
-                      videoQuality = SettingsManager.videoQuality,
+                      videoQuality = SettingsManager.videoQuality.toMetaVideoQuality(),
                       frameRate = 30,
                       // Only RTMP ships pre-encoded HEVC; WHIP and HTTP re-encode from raw
                       // YUV, so they need uncompressed glasses frames.
@@ -701,6 +703,13 @@ class StreamViewModel(
             SettingsManager.rtmpVideoCodec.toCoreCodec()
         SettingsManager.rtmpCompressVideo -> VideoCodec.HEVC
         else -> SettingsManager.rtmpVideoCodec.toCoreCodec()
+      }
+
+  private fun GlassesVideoQuality.toMetaVideoQuality(): MetaVideoQuality =
+      when (this) {
+        GlassesVideoQuality.LOW -> MetaVideoQuality.LOW
+        GlassesVideoQuality.MEDIUM -> MetaVideoQuality.MEDIUM
+        GlassesVideoQuality.HIGH -> MetaVideoQuality.HIGH
       }
 
   private fun streamingServiceTransportMode(mode: TransportId): TransportId =

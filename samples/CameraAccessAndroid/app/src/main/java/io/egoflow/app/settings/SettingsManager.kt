@@ -2,7 +2,6 @@ package io.egoflow.app.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.meta.wearable.dat.camera.types.VideoQuality
 import io.egoflow.app.core.transport.api.TransportId
 import io.egoflow.app.stream.rtmp.RtmpAudioSource
 import io.egoflow.app.stream.rtmp.RtmpVideoCodec
@@ -71,10 +70,11 @@ object SettingsManager {
         get() = prefs.getBoolean("rtmpDebugOverlayEnabled", false)
         set(value) = prefs.edit().putBoolean("rtmpDebugOverlayEnabled", value).apply()
 
-    var videoQuality: VideoQuality
-        get() = runCatching {
-            VideoQuality.valueOf(prefs.getString("videoQuality", DEFAULT_VIDEO_QUALITY).orEmpty())
-        }.getOrDefault(VideoQuality.MEDIUM)
+    var videoQuality: GlassesVideoQuality
+        get() =
+            GlassesVideoQuality.fromPreferenceValue(
+                prefs.getString("videoQuality", DEFAULT_VIDEO_QUALITY),
+            )
         set(value) = prefs.edit().putString("videoQuality", value.name).apply()
 
     var themeMode: ThemePreference
