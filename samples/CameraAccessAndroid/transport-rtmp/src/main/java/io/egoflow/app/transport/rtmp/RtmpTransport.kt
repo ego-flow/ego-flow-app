@@ -136,6 +136,7 @@ class RtmpTransport(
       failStart("register failed", error)
     }
     registeredSession = session
+    Log.i(TAG, "Registered EgoFlow recording session id=${session.recordingSessionId}")
 
     val grant: PublishTicketGrant = try {
       withContext(Dispatchers.IO) { backend.requestPublishTicket(session) }
