@@ -18,6 +18,7 @@ package io.egoflow.app.transport.http
 
 import android.util.Log
 import com.meta.wearable.dat.camera.types.VideoFrame
+import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.StopReason
 import io.egoflow.app.core.transport.api.Transport
 import io.egoflow.app.core.transport.api.TransportFailureReason
@@ -86,6 +87,15 @@ class HttpTransport(
         val bytes = ByteArray(source.remaining())
         source.get(bytes)
         recorder?.queueGlassesFrame(bytes, frame.width, frame.height, frame.presentationTimeUs)
+    }
+
+    override fun sendGlassesFrame(frame: GlassesVideoFrame) {
+        recorder?.queueGlassesFrame(
+            frame.copyI420(),
+            frame.width,
+            frame.height,
+            frame.presentationTimeUs,
+        )
     }
 
     override fun sendGlassesFrameCompressed(frame: VideoFrame) {

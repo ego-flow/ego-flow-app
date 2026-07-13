@@ -22,6 +22,7 @@ package io.egoflow.app.transport.whip
 import android.content.Context
 import android.util.Log
 import com.meta.wearable.dat.camera.types.VideoFrame
+import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.StopReason
 import io.egoflow.app.core.transport.api.Transport
 import io.egoflow.app.core.transport.api.TransportFailureReason
@@ -155,6 +156,19 @@ class WhipTransport(
     source.get(bytes)
     // Wearables PTS is microseconds; WebRTC frame timestamps are nanoseconds.
     if (peer?.feedI420(bytes, frame.width, frame.height, frame.presentationTimeUs * 1_000L) == true) {
+      totalVideoSamplesSent.incrementAndGet()
+    }
+  }
+
+  override fun sendGlassesFrame(frame: GlassesVideoFrame) {
+    if (
+        peer?.feedI420(
+            frame.copyI420(),
+            frame.width,
+            frame.height,
+            frame.presentationTimeUs * 1_000L,
+        ) == true
+    ) {
       totalVideoSamplesSent.incrementAndGet()
     }
   }
