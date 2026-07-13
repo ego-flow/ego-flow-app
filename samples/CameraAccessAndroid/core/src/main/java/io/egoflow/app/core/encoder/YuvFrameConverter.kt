@@ -15,6 +15,74 @@ import android.graphics.Bitmap
  * photo-capture tap to materialize the latest frame for the share sheet.
  */
 object YuvFrameConverter {
+    /**
+     * Convert packed ARGB pixels to planar I420 using BT.601 limited-range coefficients.
+     * Chroma is sampled once per 2x2 pixel block after averaging that block's RGB values.
+     */
+    fun argbToI420(pixels: IntArray, width: Int, height: Int): ByteArray {
+        require(width > 0 && height > 0) { "I420 dimensions must be positive" }
+        require(width % 2 == 0 && height % 2 == 0) { "I420 dimensions must be even" }
+
+        val frameSizeLong = width.toLong() * height.toLong()
+        require(frameSizeLong <= Int.MAX_VALUE) { "Frame dimensions are too large" }
+        val frameSize = frameSizeLong.toInt()
+        require(pixels.size == frameSize) {
+            "Expected $frameSize ARGB pixels, received ${pixels.size}"
+        }
+
+        val outputSizeLong = frameSizeLong * 3L / 2L
+        require(outputSizeLong <= Int.MAX_VALUE) { "I420 buffer is too large" }
+        val output = ByteArray(outputSizeLong.toInt())
+        val chromaWidth = width / 2
+        val uOffset = frameSize
+        val vOffset = frameSize + frameSize / 4
+
+        for (row in 0 until height) {
+            val rowOffset = row * width
+            for (col in 0 until width) {
+                val pixel = pixels[rowOffset + col]
+                val red = pixel shr 16 and 0xff
+                val green = pixel shr 8 and 0xff
+                val blue = pixel and 0xff
+                output[rowOffset + col] = rgbToY(red, green, blue).toByte()
+            }
+        }
+
+        for (row in 0 until height step 2) {
+            for (col in 0 until width step 2) {
+                var redSum = 0
+                var greenSum = 0
+                var blueSum = 0
+                for (rowOffset in 0..1) {
+                    for (colOffset in 0..1) {
+                        val pixel = pixels[(row + rowOffset) * width + col + colOffset]
+                        redSum += pixel shr 16 and 0xff
+                        greenSum += pixel shr 8 and 0xff
+                        blueSum += pixel and 0xff
+                    }
+                }
+
+                val red = (redSum + 2) / 4
+                val green = (greenSum + 2) / 4
+                val blue = (blueSum + 2) / 4
+                val chromaIndex = row / 2 * chromaWidth + col / 2
+                output[uOffset + chromaIndex] = rgbToU(red, green, blue).toByte()
+                output[vOffset + chromaIndex] = rgbToV(red, green, blue).toByte()
+            }
+        }
+
+        return output
+    }
+
+    private fun rgbToY(red: Int, green: Int, blue: Int): Int =
+        (((66 * red + 129 * green + 25 * blue + 128) shr 8) + 16).coerceIn(0, 255)
+
+    private fun rgbToU(red: Int, green: Int, blue: Int): Int =
+        (((-38 * red - 74 * green + 112 * blue + 128) shr 8) + 128).coerceIn(0, 255)
+
+    private fun rgbToV(red: Int, green: Int, blue: Int): Int =
+        (((112 * red - 94 * green - 18 * blue + 128) shr 8) + 128).coerceIn(0, 255)
+
     /** Interleave a planar I420 buffer into semi-planar NV12, writing into the
      *  caller-provided [out] (sized width*height*3/2). [out] is reused frame to
      *  frame by the encoder instead of being reallocated per frame. */
