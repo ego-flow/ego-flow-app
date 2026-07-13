@@ -12,20 +12,17 @@ package io.egoflow.app.stream
 import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.FileProvider
-import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.extentos.glasses.core.VideoFrameConfig
 import com.meta.wearable.dat.camera.Stream
 import com.meta.wearable.dat.camera.addStream
-import com.meta.wearable.dat.camera.types.PhotoData
 import com.meta.wearable.dat.camera.types.StreamConfiguration
 import com.meta.wearable.dat.camera.types.StreamError
 import com.meta.wearable.dat.camera.types.StreamState
@@ -37,6 +34,8 @@ import com.meta.wearable.dat.core.session.DeviceSession
 import com.meta.wearable.dat.core.session.DeviceSessionState
 import com.meta.wearable.dat.core.types.DeviceSessionError
 import io.egoflow.app.R
+import io.egoflow.app.core.encoder.YuvFrameConverter
+import io.egoflow.app.core.transport.api.GlassesVideoFrame
 import io.egoflow.app.core.transport.api.StopReason
 import io.egoflow.app.core.transport.api.Transport
 import io.egoflow.app.core.transport.api.TransportDeps
@@ -46,6 +45,10 @@ import io.egoflow.app.core.transport.api.TransportId
 import io.egoflow.app.core.transport.api.TransportStartException
 import io.egoflow.app.core.transport.api.TransportState
 import io.egoflow.app.core.transport.api.VideoCodec
+import io.egoflow.app.extentos.AdaptedExtentosFrame
+import io.egoflow.app.extentos.ExtentosBootstrap
+import io.egoflow.app.extentos.ExtentosFrameAdapter
+import io.egoflow.app.extentos.toExtentosResolution
 import io.egoflow.app.phone.PhoneCameraManager
 import io.egoflow.app.settings.GlassesVideoQuality
 import io.egoflow.app.settings.SettingsManager
@@ -54,7 +57,6 @@ import io.egoflow.app.transport.http.HttpTransportFactory
 import io.egoflow.app.transport.rtmp.RtmpTransportFactory
 import io.egoflow.app.transport.whip.WhipTransportFactory
 import io.egoflow.app.wearables.WearablesViewModel
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -95,13 +97,18 @@ class StreamViewModel(
   companion object {
     private const val TAG = "StreamViewModel"
     private const val GLASSES_STREAM_START_TIMEOUT_MS = 20_000L
+    private const val GLASSES_FRAME_RATE = 30
+    private const val FRAME_DIAGNOSTIC_INTERVAL = 30L
     private val INITIAL_STATE = StreamUiState()
   }
 
+  private val glasses = (application as ExtentosBootstrap).glasses
+  private val extentosFrameAdapter = ExtentosFrameAdapter()
   private val deviceSelector: DeviceSelector = wearablesViewModel.deviceSelector
   private var session: DeviceSession? = null
   private var stream: Stream? = null
   private var phoneCameraManager: PhoneCameraManager? = null
+  private var latestGlassesFrame: GlassesVideoFrame? = null
 
   private val _uiState = MutableStateFlow(INITIAL_STATE)
   val uiState: StateFlow<StreamUiState> = _uiState.asStateFlow()
@@ -119,8 +126,6 @@ class StreamViewModel(
   private var currentSessionId: String? = null
   private var stopRequested = false
   private var streamLifecycleGeneration = 0L
-  // Tracks the prior DeviceSessionState so the session-state collector can tell a
-  // device-initiated resume (PAUSED -> STARTED) from a fresh start.
   private var previousDeviceSessionState: DeviceSessionState? = null
 
   // Inbound video frames received from the active source (glasses
@@ -250,12 +255,14 @@ class StreamViewModel(
   // Idempotent: never starts the same session twice (avoids the case where switching
   // tabs brings StreamScreen back into composition and re-fires the LaunchedEffect).
   fun startStream() {
-    if (session != null || addStreamJob?.isActive == true) {
-      Log.d(TAG, "startStream ignored -- session already active")
+    if (videoJob?.isActive == true) {
+      Log.d(TAG, "startStream ignored -- Extentos frame collection already active")
       return
     }
     val generation = nextStreamLifecycleGeneration()
     stopRequested = false
+    extentosFrameAdapter.reset()
+    latestGlassesFrame = null
     previousDeviceSessionState = null
     videoJob?.cancel()
     stateJob?.cancel()
@@ -272,41 +279,87 @@ class StreamViewModel(
         transportMode = streamingServiceTransportMode(SettingsManager.transportMode),
     )
 
-    _uiState.update { it.copy(streamingMode = StreamingMode.GLASSES) }
+    _uiState.update {
+      it.copy(
+          streamingMode = StreamingMode.GLASSES,
+          streamState = StreamState.STARTING,
+          streamingStartedAtMs = null,
+      )
+    }
 
     // Transport bootstrap is independent of the glasses session -- start it now so the
     // RTMP/backend round-trip runs in parallel with the device session spinning up.
     startTransportSession()
     startFpsSampler()
+    scheduleExtentosStreamStartTimeout(generation)
 
-    // 0.7.0 session model: create a DeviceSession, observe its state, and attach the
-    // camera Stream once the session reaches STARTED. (0.6.0's one-shot
-    // Wearables.startStreamSession was removed.)
-    Wearables.createSession(deviceSelector)
-        .onSuccess { createdSession ->
-          if (!isActiveLifecycle(generation)) {
-            Log.d(TAG, "Discarding stale created session after stop/restart")
-            createdSession.stop()
-            return@onSuccess
-          }
-          session = createdSession
-          sessionErrorJob =
-              viewModelScope.launch {
-                createdSession.errors.collect { error ->
-                  if (isActiveGlassesLifecycle(generation, createdSession)) {
-                    handleSessionError(error)
-                  }
+    val frameConfig =
+        VideoFrameConfig(
+            frameRate = GLASSES_FRAME_RATE,
+            resolution = SettingsManager.videoQuality.toExtentosResolution(),
+        )
+    videoJob =
+        viewModelScope.launch(Dispatchers.Default) {
+          try {
+            glasses.camera.videoFrames(frameConfig).collect { sourceFrame ->
+              if (!isActiveLifecycle(generation)) return@collect
+
+              val adapted = extentosFrameAdapter.adapt(sourceFrame)
+              val frameNumber = handleExtentosVideoFrame(adapted)
+              if (frameNumber == 1L) {
+                cancelGlassesStreamStartTimeout()
+                _uiState.update {
+                  it.copy(
+                      streamState = StreamState.STREAMING,
+                      streamingStartedAtMs = SystemClock.elapsedRealtime(),
+                  )
+                }
+                if (!SettingsManager.rtmpEnabled) {
+                  wearablesViewModel.onStreamStarted()
                 }
               }
-          observeSessionState(createdSession, generation)
-          createdSession.start()
+              if (frameNumber == 1L || frameNumber % FRAME_DIAGNOSTIC_INTERVAL == 0L) {
+                logExtentosFrameDiagnostics(adapted, frameNumber)
+              }
+            }
+            if (isActiveLifecycle(generation)) {
+              error("Extentos videoFrames completed while streaming was active")
+            }
+          } catch (error: CancellationException) {
+            throw error
+          } catch (error: Exception) {
+            if (!isActiveLifecycle(generation)) return@launch
+            Log.e(TAG, "Extentos video frame collection failed", error)
+            wearablesViewModel.setRecentError(
+                "Glasses video could not be processed. Reconnect the glasses and try again.",
+            )
+            stopStream(StopReason.FATAL_ERROR)
+            wearablesViewModel.onStreamFailed()
+          }
         }
-        .onFailure { error, _ ->
-          if (!isActiveLifecycle(generation)) return@onFailure
-          Log.e(TAG, "Failed to create session: ${error.description}")
-          wearablesViewModel.setRecentError("Streaming failed: ${error.description}")
-          stopStream(StopReason.FATAL_ERROR)
-          wearablesViewModel.onStreamFailed()
+  }
+
+  private fun scheduleExtentosStreamStartTimeout(generation: Long) {
+    streamStartTimeoutJob?.cancel()
+    streamStartTimeoutJob =
+        viewModelScope.launch {
+          delay(GLASSES_STREAM_START_TIMEOUT_MS)
+          if (
+              isActiveLifecycle(generation) &&
+                  _uiState.value.streamingMode == StreamingMode.GLASSES &&
+                  _uiState.value.streamState == StreamState.STARTING
+          ) {
+            Log.w(
+                TAG,
+                "Extentos videoFrames produced no valid frame within " +
+                    "${GLASSES_STREAM_START_TIMEOUT_MS}ms",
+            )
+            wearablesViewModel.setRecentError(
+                getApplication<Application>().getString(R.string.error_glasses_stream_start_timeout),
+            )
+            stopStream(StopReason.FATAL_ERROR)
+            wearablesViewModel.onStreamFailed()
+          }
         }
   }
 
@@ -696,12 +749,9 @@ class StreamViewModel(
         // and there's no on-device HEVC pass-through, so the codec/compress
         // settings don't apply.
         SettingsManager.transportMode == TransportId.WHIP -> VideoCodec.H264
-        // HTTP runs the on-device encoder, so the codec choice applies, but
-        // compression (HEVC pass-through) is forced off -- the encoder produces the
-        // chosen codec into the MP4 (ffmpeg finalize handles both H.264 and HEVC).
-        SettingsManager.transportMode == TransportId.HTTP ->
-            SettingsManager.rtmpVideoCodec.toCoreCodec()
-        SettingsManager.rtmpCompressVideo -> VideoCodec.HEVC
+        // Extentos exposes JPEG frames, so RTMP and HTTP both use the existing
+        // on-device encoder. The old DAT HEVC pass-through toggle no longer changes
+        // capture format or codec selection.
         else -> SettingsManager.rtmpVideoCodec.toCoreCodec()
       }
 
@@ -782,6 +832,8 @@ class StreamViewModel(
     addStreamJob = null
     videoJob?.cancel()
     videoJob = null
+    extentosFrameAdapter.reset()
+    latestGlassesFrame = null
     stateJob?.cancel()
     stateJob = null
     errorJob?.cancel()
@@ -845,21 +897,34 @@ class StreamViewModel(
         return
       }
 
-      Log.d(TAG, "Starting photo capture")
+      val frame = latestGlassesFrame
+      if (frame == null) {
+        Log.w(TAG, "Cannot capture photo: no Extentos frame is available")
+        return
+      }
+
+      Log.d(TAG, "Capturing the latest Extentos video frame")
       _uiState.update { it.copy(isCapturing = true) }
 
-      viewModelScope.launch {
-        stream
-            ?.capturePhoto()
-            ?.onSuccess { photoData ->
-              Log.d(TAG, "Photo capture successful")
-              handlePhotoData(photoData)
-              _uiState.update { it.copy(isCapturing = false) }
-            }
-            ?.onFailure { error, _ ->
-              Log.e(TAG, "Photo capture failed: ${error.description}")
-              _uiState.update { it.copy(isCapturing = false) }
-            }
+      viewModelScope.launch(Dispatchers.Default) {
+        try {
+          val bitmap =
+              YuvFrameConverter.i420ToBitmap(
+                  frame.copyI420(),
+                  frame.width,
+                  frame.height,
+              )
+          _uiState.update {
+            it.copy(
+                capturedPhoto = bitmap,
+                isShareDialogVisible = true,
+                isCapturing = false,
+            )
+          }
+        } catch (error: Exception) {
+          Log.e(TAG, "Failed to capture the latest Extentos frame", error)
+          _uiState.update { it.copy(isCapturing = false) }
+        }
       }
     } else {
       Log.w(
@@ -910,6 +975,23 @@ class StreamViewModel(
   // updates here -- the StreamUiState diff would re-render the Compose
   // tree on every video frame. Health-card style metrics belong on the
   // transport/encoder side, not in the UI flow.
+  private fun handleExtentosVideoFrame(adapted: AdaptedExtentosFrame): Long {
+    latestGlassesFrame = adapted.frame
+    val frameNumber = inputFrameCount.incrementAndGet()
+    transport.sendGlassesFrame(adapted.frame)
+    return frameNumber
+  }
+
+  private fun logExtentosFrameDiagnostics(adapted: AdaptedExtentosFrame, frameNumber: Long) {
+    Log.i(
+        TAG,
+        "Extentos frame #$frameNumber signature=jpeg " +
+            "size=${adapted.jpegSizeBytes}B dimensions=${adapted.frame.width}x${adapted.frame.height} " +
+            "ptsUs=${adapted.frame.presentationTimeUs} decodeUs=${adapted.decodeDurationUs} " +
+            "convertUs=${adapted.conversionDurationUs}",
+    )
+  }
+
   private fun handleVideoFrame(videoFrame: VideoFrame) {
     inputFrameCount.incrementAndGet()
     // Codec-config frames (0.7.0) carry only HEVC parameter sets, not raw YUV, so they
@@ -955,87 +1037,6 @@ class StreamViewModel(
         "Couldn't establish a secure connection to the streaming server."
     TransportFailureReason.INTERNAL ->
         "Streaming stopped due to an unexpected error. Please try again."
-  }
-
-  private fun handlePhotoData(photo: PhotoData) {
-    val capturedPhoto =
-        when (photo) {
-          is PhotoData.Bitmap -> photo.bitmap
-          is PhotoData.HEIC -> {
-            val byteArray = ByteArray(photo.data.remaining())
-            photo.data.get(byteArray)
-
-            val exifInfo = getExifInfo(byteArray)
-            val transform = getTransform(exifInfo)
-            decodeHeic(byteArray, transform)
-          }
-        }
-    _uiState.update { it.copy(capturedPhoto = capturedPhoto, isShareDialogVisible = true) }
-  }
-
-  private fun decodeHeic(heicBytes: ByteArray, transform: Matrix): Bitmap {
-    val bitmap = BitmapFactory.decodeByteArray(heicBytes, 0, heicBytes.size)
-    return applyTransform(bitmap, transform)
-  }
-
-  private fun getExifInfo(heicBytes: ByteArray): ExifInterface? {
-    return try {
-      ByteArrayInputStream(heicBytes).use { inputStream -> ExifInterface(inputStream) }
-    } catch (e: IOException) {
-      Log.w(TAG, "Failed to read EXIF from HEIC", e)
-      null
-    }
-  }
-
-  private fun getTransform(exifInfo: ExifInterface?): Matrix {
-    val matrix = Matrix()
-
-    if (exifInfo == null) {
-      return matrix
-    }
-
-    when (
-        exifInfo.getAttributeInt(
-            ExifInterface.TAG_ORIENTATION,
-            ExifInterface.ORIENTATION_NORMAL,
-        )
-    ) {
-      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
-      ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-      ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
-      ExifInterface.ORIENTATION_TRANSPOSE -> {
-        matrix.postRotate(90f)
-        matrix.postScale(-1f, 1f)
-      }
-      ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-      ExifInterface.ORIENTATION_TRANSVERSE -> {
-        matrix.postRotate(270f)
-        matrix.postScale(-1f, 1f)
-      }
-      ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-      ExifInterface.ORIENTATION_NORMAL,
-      ExifInterface.ORIENTATION_UNDEFINED -> {}
-    }
-
-    return matrix
-  }
-
-  private fun applyTransform(bitmap: Bitmap, matrix: Matrix): Bitmap {
-    if (matrix.isIdentity) {
-      return bitmap
-    }
-
-    return try {
-      val transformed =
-          Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-      if (transformed != bitmap) {
-        bitmap.recycle()
-      }
-      transformed
-    } catch (e: OutOfMemoryError) {
-      Log.e(TAG, "Failed to apply transformation due to memory", e)
-      bitmap
-    }
   }
 
   override fun onCleared() {
