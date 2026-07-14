@@ -70,23 +70,31 @@ class ExtentosFrameAdapterTest {
   }
 
   @Test
-  fun `rejects a timestamp that does not advance`() {
+  fun `normalizes a duplicate timestamp instead of stopping frame collection`() {
     val adapter =
         ExtentosFrameAdapter(
             jpegDecoder =
                 JpegFrameDecoder { DecodedArgbFrame(IntArray(4) { 0xff000000.toInt() }, 2, 2) }
         )
-    adapter.adapt(extentosFrame(timestampMs = 10L))
+    val first = adapter.adapt(extentosFrame(timestampMs = 10L))
+    val duplicate = adapter.adapt(extentosFrame(timestampMs = 10L))
 
-    val exception =
-        assertThrows(IllegalArgumentException::class.java) {
-          adapter.adapt(extentosFrame(timestampMs = 10L))
-        }
+    assertEquals(10_000L, first.frame.presentationTimeUs)
+    assertEquals(10_001L, duplicate.frame.presentationTimeUs)
+  }
 
-    assertEquals(
-        "Extentos frame timestamp 10000us did not advance beyond 10000us",
-        exception.message,
-    )
+  @Test
+  fun `normalizes a regressing timestamp instead of stopping frame collection`() {
+    val adapter =
+        ExtentosFrameAdapter(
+            jpegDecoder =
+                JpegFrameDecoder { DecodedArgbFrame(IntArray(4) { 0xff000000.toInt() }, 2, 2) }
+        )
+    val first = adapter.adapt(extentosFrame(timestampMs = 10L))
+    val regressing = adapter.adapt(extentosFrame(timestampMs = 9L))
+
+    assertEquals(10_000L, first.frame.presentationTimeUs)
+    assertEquals(10_001L, regressing.frame.presentationTimeUs)
   }
 
   @Test

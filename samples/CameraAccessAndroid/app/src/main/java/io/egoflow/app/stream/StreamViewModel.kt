@@ -20,7 +20,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.extentos.glasses.core.GlassesState
 import com.extentos.glasses.core.VideoFrameConfig
 import io.egoflow.app.R
 import io.egoflow.app.core.encoder.YuvFrameConverter
@@ -45,6 +44,7 @@ import io.egoflow.app.transport.http.HttpTransportFactory
 import io.egoflow.app.transport.rtmp.RtmpTransportFactory
 import io.egoflow.app.transport.whip.WhipTransportFactory
 import io.egoflow.app.wearables.WearablesViewModel
+import io.egoflow.app.wearables.shouldStopGlassesCapture
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -152,8 +152,8 @@ class StreamViewModel(
       glasses.connection.state.collect { state ->
         val glassesCaptureIsActive =
             _uiState.value.streamingMode == StreamingMode.GLASSES && videoJob?.isActive == true
-        if (state !is GlassesState.Active && glassesCaptureIsActive && !stopRequested) {
-          Log.w(TAG, "Extentos connection left Active during glasses capture")
+        if (state.shouldStopGlassesCapture() && glassesCaptureIsActive && !stopRequested) {
+          Log.w(TAG, "Extentos disconnected during glasses capture: $state")
           stopStream(StopReason.GLASSES_STOP)
           wearablesViewModel.onStreamFailed()
         }

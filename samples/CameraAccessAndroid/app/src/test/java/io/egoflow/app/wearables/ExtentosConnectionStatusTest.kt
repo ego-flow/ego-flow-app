@@ -57,4 +57,17 @@ class ExtentosConnectionStatusTest {
     assertTrue(active.toConnectionStatus().canStream)
     assertFalse(GlassesState.Registered.toConnectionStatus().canStream)
   }
+
+  @Test
+  fun `connecting during capture is transient and does not stop the stream`() {
+    assertFalse(GlassesState.Connecting("device-1").shouldStopGlassesCapture())
+  }
+
+  @Test
+  fun `explicit disconnect during capture stops the stream`() {
+    assertTrue(
+        GlassesState.Disconnected(DisconnectCause.DeviceDroppedConnection)
+            .shouldStopGlassesCapture()
+    )
+  }
 }

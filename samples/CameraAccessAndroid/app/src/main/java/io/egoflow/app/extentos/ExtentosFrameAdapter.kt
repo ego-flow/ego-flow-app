@@ -36,11 +36,14 @@ internal class ExtentosFrameAdapter(
   fun adapt(source: VideoFrame): AdaptedExtentosFrame {
     require(isCompleteJpeg(source.data)) { "Extentos frame is not a complete JPEG payload" }
 
-    val presentationTimeUs = toPresentationTimeUs(source.timestampMs)
+    val sourcePresentationTimeUs = toPresentationTimeUs(source.timestampMs)
     val previousTimestampUs = lastPresentationTimeUs
-    require(previousTimestampUs == null || presentationTimeUs > previousTimestampUs) {
-      "Extentos frame timestamp ${presentationTimeUs}us did not advance beyond ${previousTimestampUs}us"
-    }
+    val presentationTimeUs =
+        if (previousTimestampUs == null || sourcePresentationTimeUs > previousTimestampUs) {
+          sourcePresentationTimeUs
+        } else {
+          previousTimestampUs + 1L
+        }
 
     val decodeStartedNs = nanoTime()
     val decoded = jpegDecoder.decode(source.data)

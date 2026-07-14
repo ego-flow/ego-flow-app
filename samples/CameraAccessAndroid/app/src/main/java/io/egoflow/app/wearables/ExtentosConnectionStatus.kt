@@ -20,3 +20,6 @@ internal fun GlassesState.toConnectionStatus(): ExtentosConnectionStatus =
       is GlassesState.Active -> ExtentosConnectionStatus.ACTIVE
       is GlassesState.Disconnected -> ExtentosConnectionStatus.DISCONNECTED
     }
+
+internal fun GlassesState.shouldStopGlassesCapture(): Boolean =
+    this is GlassesState.Disconnected
