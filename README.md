@@ -106,6 +106,13 @@ Project notes live under `docs/`:
 - `docs/03. project_architecture.md`
 - `docs/04. project_rtmp_android.md`
 
+## Extentos
+
+The smart-glasses integration in this branch is powered by
+[Extentos](https://extentos.com/). Its Android SDK provides the device connection and live-video
+interfaces used by `CameraAccessAndroid`, and the Extentos MCP server supported the integration
+workflow. Thanks to the Extentos team for the platform and development support.
+
 ## Attribution And License
 
 This repository contains code derived from Meta Wearables DAT sample apps and from the VisionClaw
