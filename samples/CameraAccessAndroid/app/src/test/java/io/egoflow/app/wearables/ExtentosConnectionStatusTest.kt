@@ -1,6 +1,7 @@
 package io.egoflow.app.wearables
 
 import com.extentos.glasses.core.ActiveState
+import com.extentos.glasses.core.CameraStatus
 import com.extentos.glasses.core.DeviceInfo
 import com.extentos.glasses.core.DeviceType
 import com.extentos.glasses.core.DisconnectCause
@@ -49,7 +50,11 @@ class ExtentosConnectionStatusTest {
                         vendor = "Meta",
                         modelId = "test-model",
                     ),
-                captureReady = true,
+                // 2.0.x replaced the captureReady boolean with a three-state
+                // CameraStatus (Ready / Starting / Broken). The old boolean
+                // conflated "starting" with "broken", which is why it changed;
+                // only Broken should ever surface an amber warning to a user.
+                camera = CameraStatus.READY,
             )
         )
 

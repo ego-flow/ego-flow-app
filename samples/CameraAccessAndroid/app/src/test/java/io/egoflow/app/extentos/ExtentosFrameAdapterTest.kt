@@ -1,6 +1,7 @@
 package io.egoflow.app.extentos
 
 import com.extentos.glasses.core.VideoFrame
+import com.extentos.glasses.core.VideoFrameFormat
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -8,7 +9,7 @@ import org.junit.Test
 
 class ExtentosFrameAdapterTest {
   @Test
-  fun `converts decoded JPEG pixels to I420 and milliseconds to microseconds`() {
+  fun `converts decoded JPEG pixels to I420 and carries the SDK timestamp through`() {
     val decoder =
         JpegFrameDecoder {
           DecodedArgbFrame(
@@ -21,7 +22,10 @@ class ExtentosFrameAdapterTest {
 
     val adapted = adapter.adapt(extentosFrame(timestampMs = 42L))
 
+    // VideoFrame.timestampUs defaults to timestampMs * 1000, and the adapter
+    // now passes it straight through rather than deriving it.
     assertEquals(42_000L, adapted.frame.presentationTimeUs)
+    assertEquals(false, adapted.usedRawYuv)
     assertEquals(2, adapted.frame.width)
     assertEquals(2, adapted.frame.height)
     assertArrayEquals(
@@ -70,46 +74,68 @@ class ExtentosFrameAdapterTest {
   }
 
   @Test
-  fun `normalizes a duplicate timestamp instead of stopping frame collection`() {
+  fun `raw I420 passes straight through with no decode or conversion`() {
+    var decoderCalled = false
     val adapter =
         ExtentosFrameAdapter(
-            jpegDecoder =
-                JpegFrameDecoder { DecodedArgbFrame(IntArray(4) { 0xff000000.toInt() }, 2, 2) }
-        )
-    val first = adapter.adapt(extentosFrame(timestampMs = 10L))
-    val duplicate = adapter.adapt(extentosFrame(timestampMs = 10L))
+            jpegDecoder = {
+              decoderCalled = true
+              DecodedArgbFrame(IntArray(4), 2, 2)
+            })
 
-    assertEquals(10_000L, first.frame.presentationTimeUs)
-    assertEquals(10_001L, duplicate.frame.presentationTimeUs)
+    // 2x2 I420 is exactly 6 bytes: 4 luma + 1 Cb + 1 Cr.
+    val planar = ByteArray(6) { (it + 1).toByte() }
+    val adapted = adapter.adapt(rawFrame(timestampUs = 7_000L, data = planar))
+
+    assertEquals(true, adapted.usedRawYuv)
+    assertEquals(false, decoderCalled)
+    assertArrayEquals(planar, adapted.frame.copyI420())
+    assertEquals(7_000L, adapted.frame.presentationTimeUs)
+    // The point of the change: neither cost is paid on the raw path.
+    assertEquals(0L, adapted.decodeDurationUs)
+    assertEquals(0L, adapted.conversionDurationUs)
   }
 
   @Test
-  fun `normalizes a regressing timestamp instead of stopping frame collection`() {
+  fun `a raw buffer of the wrong size falls back to JPEG instead of throwing`() {
+    // GlassesVideoFrame REQUIRES exactly width*height*3/2 and throws otherwise.
+    // The SDK hands over the platform's buffer untouched, so a stride-padded one
+    // is possible on hardware we have not measured. Falling back beats taking
+    // the whole stream down inside a require().
+    var decoderCalled = false
     val adapter =
         ExtentosFrameAdapter(
-            jpegDecoder =
-                JpegFrameDecoder { DecodedArgbFrame(IntArray(4) { 0xff000000.toInt() }, 2, 2) }
-        )
-    val first = adapter.adapt(extentosFrame(timestampMs = 10L))
-    val regressing = adapter.adapt(extentosFrame(timestampMs = 9L))
+            jpegDecoder = {
+              decoderCalled = true
+              DecodedArgbFrame(IntArray(8) { 0xff000000.toInt() }, 4, 2)
+            })
 
-    assertEquals(10_000L, first.frame.presentationTimeUs)
-    assertEquals(10_001L, regressing.frame.presentationTimeUs)
+    // A 4x2 frame needs 12 bytes of I420; this payload is 6, so the raw path
+    // must decline it. The payload is a valid JPEG so the fallback can proceed.
+    val jpegBody =
+        byteArrayOf(0xff.toByte(), 0xd8.toByte(), 1, 2, 0xff.toByte(), 0xd9.toByte())
+    val adapted = adapter.adapt(rawFrame(timestampUs = 9_000L, data = jpegBody, width = 4, height = 2))
+
+    assertEquals(false, adapted.usedRawYuv)
+    assertEquals(true, decoderCalled)
+    assertEquals(9_000L, adapted.frame.presentationTimeUs)
+    assertEquals(4, adapted.frame.width)
   }
 
-  @Test
-  fun `reset starts a new monotonic timestamp sequence`() {
-    val adapter =
-        ExtentosFrameAdapter(
-            jpegDecoder =
-                JpegFrameDecoder { DecodedArgbFrame(IntArray(4) { 0xff000000.toInt() }, 2, 2) }
-        )
-    adapter.adapt(extentosFrame(timestampMs = 10L))
-
-    adapter.reset()
-
-    assertEquals(10_000L, adapter.adapt(extentosFrame(timestampMs = 10L)).frame.presentationTimeUs)
-  }
+  private fun rawFrame(
+      timestampUs: Long,
+      data: ByteArray,
+      width: Int = 2,
+      height: Int = 2,
+  ): VideoFrame =
+      VideoFrame(
+          timestampMs = timestampUs / 1000,
+          width = width,
+          height = height,
+          data = data,
+          format = VideoFrameFormat.RAW_YUV,
+          timestampUs = timestampUs,
+      )
 
   private fun extentosFrame(
       timestampMs: Long,

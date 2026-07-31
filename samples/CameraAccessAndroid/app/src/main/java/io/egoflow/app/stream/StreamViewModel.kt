@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.extentos.glasses.core.VideoFrameConfig
+import com.extentos.glasses.core.VideoFrameFormat
 import io.egoflow.app.R
 import io.egoflow.app.core.encoder.YuvFrameConverter
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
@@ -280,6 +281,11 @@ class StreamViewModel(
         VideoFrameConfig(
             frameRate = GLASSES_FRAME_RATE,
             resolution = SettingsManager.videoQuality.toExtentosResolution(),
+            // RAW_YUV hands us the planar I420 the transport already wants, so the
+            // per-frame JPEG decode + ARGB->I420 conversion disappear from the hot
+            // path. The adapter still handles the JPEG shape as a fallback -- see
+            // ExtentosFrameAdapter.
+            format = VideoFrameFormat.RAW_YUV,
         )
     videoJob =
         viewModelScope.launch(Dispatchers.Default) {

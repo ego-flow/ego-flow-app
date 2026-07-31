@@ -2,6 +2,7 @@ package io.egoflow.app.extentos
 
 import android.graphics.BitmapFactory
 import com.extentos.glasses.core.VideoFrame
+import com.extentos.glasses.core.VideoFrameFormat
 import io.egoflow.app.core.encoder.YuvFrameConverter
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
 
@@ -17,33 +18,79 @@ internal fun interface JpegFrameDecoder {
 
 internal data class AdaptedExtentosFrame(
     val frame: GlassesVideoFrame,
+    /** Payload size of the source frame, whatever its format. */
     val jpegSizeBytes: Int,
     val decodeDurationUs: Long,
     val conversionDurationUs: Long,
+    /** True when the frame arrived as planar I420 and needed no decode. */
+    val usedRawYuv: Boolean = false,
 )
 
-/** Converts Extentos' public JPEG frame payload into EgoFlow's transport-owned I420 frame. */
+/**
+ * Turns an Extentos [VideoFrame] into EgoFlow's transport-owned I420 frame.
+ *
+ * Two paths now:
+ *
+ *  - **RAW_YUV (preferred).** The SDK hands over planar I420 directly, so there is
+ *    nothing to decode or convert — `decodeDurationUs` and `conversionDurationUs`
+ *    are both 0. This is the whole point of the change: the JPEG decode and the
+ *    software ARGB->I420 conversion used to run on EVERY frame of a continuous
+ *    stream, on a phone that is simultaneously encoding and publishing.
+ *
+ *  - **JPEG (fallback).** Unchanged from before, and deliberately kept.
+ *
+ * The fallback is not defensive paranoia. `GlassesVideoFrame` requires the buffer
+ * to be EXACTLY `width * height * 3 / 2`, and the SDK passes the platform's raw
+ * buffer through untouched — so whether it is tightly packed or stride-padded is
+ * a property of the underlying camera stack, not of Extentos. It is tightly
+ * packed on the hardware and resolutions we could check, but that is not a
+ * guarantee across future SDK versions, other resolutions, or other devices.
+ * Rather than let a padded buffer throw inside `GlassesVideoFrame.init` and take
+ * the stream down, an unexpected size falls back to the JPEG path for that frame.
+ *
+ * Timestamps come straight from [VideoFrame.timestampUs]. The SDK guarantees they
+ * are strictly increasing per stream (it clamps a non-advancing source timestamp
+ * to previous + 1), which is what the old `lastPresentationTimeUs` clamp here was
+ * compensating for before that guarantee existed.
+ */
 internal class ExtentosFrameAdapter(
     private val jpegDecoder: JpegFrameDecoder = AndroidJpegFrameDecoder,
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
-  private var lastPresentationTimeUs: Long? = null
 
   fun reset() {
-    lastPresentationTimeUs = null
+    // No cross-frame state left to reset; kept so callers need not change.
   }
 
   fun adapt(source: VideoFrame): AdaptedExtentosFrame {
-    require(isCompleteJpeg(source.data)) { "Extentos frame is not a complete JPEG payload" }
+    if (source.format == VideoFrameFormat.RAW_YUV && isWellFormedI420(source)) {
+      return AdaptedExtentosFrame(
+          frame =
+              GlassesVideoFrame(
+                  i420 = source.data,
+                  width = source.width,
+                  height = source.height,
+                  presentationTimeUs = source.timestampUs,
+              ),
+          jpegSizeBytes = source.data.size,
+          decodeDurationUs = 0,
+          conversionDurationUs = 0,
+          usedRawYuv = true,
+      )
+    }
+    return adaptJpeg(source)
+  }
 
-    val sourcePresentationTimeUs = toPresentationTimeUs(source.timestampMs)
-    val previousTimestampUs = lastPresentationTimeUs
-    val presentationTimeUs =
-        if (previousTimestampUs == null || sourcePresentationTimeUs > previousTimestampUs) {
-          sourcePresentationTimeUs
-        } else {
-          previousTimestampUs + 1L
-        }
+  /** Exactly what [GlassesVideoFrame] will accept — checked before, not after. */
+  private fun isWellFormedI420(source: VideoFrame): Boolean {
+    if (source.width <= 0 || source.height <= 0) return false
+    if (source.width % 2 != 0 || source.height % 2 != 0) return false
+    val expected = source.width.toLong() * source.height.toLong() * 3L / 2L
+    return expected <= Int.MAX_VALUE && source.data.size.toLong() == expected
+  }
+
+  private fun adaptJpeg(source: VideoFrame): AdaptedExtentosFrame {
+    require(isCompleteJpeg(source.data)) { "Extentos frame is not a complete JPEG payload" }
 
     val decodeStartedNs = nanoTime()
     val decoded = jpegDecoder.decode(source.data)
@@ -56,29 +103,20 @@ internal class ExtentosFrameAdapter(
     val conversionStartedNs = nanoTime()
     val i420 = YuvFrameConverter.argbToI420(decoded.pixels, decoded.width, decoded.height)
     val conversionFinishedNs = nanoTime()
-    val frame =
-        GlassesVideoFrame(
-            i420 = i420,
-            width = decoded.width,
-            height = decoded.height,
-            presentationTimeUs = presentationTimeUs,
-        )
 
-    lastPresentationTimeUs = presentationTimeUs
     return AdaptedExtentosFrame(
-        frame = frame,
+        frame =
+            GlassesVideoFrame(
+                i420 = i420,
+                width = decoded.width,
+                height = decoded.height,
+                presentationTimeUs = source.timestampUs,
+            ),
         jpegSizeBytes = source.data.size,
         decodeDurationUs = elapsedUs(decodeStartedNs, decodeFinishedNs),
         conversionDurationUs = elapsedUs(conversionStartedNs, conversionFinishedNs),
+        usedRawYuv = false,
     )
-  }
-
-  private fun toPresentationTimeUs(timestampMs: Long): Long {
-    require(timestampMs >= 0L) { "Extentos frame timestamp must be non-negative" }
-    require(timestampMs <= Long.MAX_VALUE / MICROSECONDS_PER_MILLISECOND) {
-      "Extentos frame timestamp is too large to convert to microseconds"
-    }
-    return timestampMs * MICROSECONDS_PER_MILLISECOND
   }
 
   private fun isCompleteJpeg(data: ByteArray): Boolean =
@@ -92,7 +130,6 @@ internal class ExtentosFrameAdapter(
       ((endNs - startNs).coerceAtLeast(0L)) / NANOSECONDS_PER_MICROSECOND
 
   private companion object {
-    const val MICROSECONDS_PER_MILLISECOND = 1_000L
     const val NANOSECONDS_PER_MICROSECOND = 1_000L
     const val JPEG_MARKER_PREFIX: Byte = 0xff.toByte()
     const val JPEG_START_OF_IMAGE: Byte = 0xd8.toByte()
