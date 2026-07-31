@@ -28,6 +28,12 @@ extentos-glasses-ui = { group = "com.extentos", name = "glasses-ui", version.ref
 # vendorless, so camera and display have no transport without this. Adding it is
 # the whole change - it self-registers at app start and no code moves.
 extentos-glasses-meta = { group = "com.extentos", name = "glasses-meta", version.ref = "extentos" }
+# Brilliant Labs (Halo, Frame). Optional and inert until a Brilliant device is
+# BONDED to the phone: the factory reads the bonded list inside a catch that
+# returns false, so there is no scan and no permission prompt, and Auto still
+# ranks Meta ahead of it. Costs nothing to carry now and works the day you have
+# the hardware. NOT hardware-verified by us yet - see the PR description.
+extentos-glasses-brilliant = { group = "com.extentos", name = "glasses-brilliant", version.ref = "extentos" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiAutomator" }

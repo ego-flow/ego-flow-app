@@ -134,6 +134,7 @@ dependencies {
   implementation(libs.extentos.glasses)
   implementation(libs.extentos.glasses.ui)
   implementation(libs.extentos.glasses.meta)
+  implementation(libs.extentos.glasses.brilliant)
   // EgoFlow additions
   implementation(libs.okhttp)
   implementation(libs.camerax.core)
