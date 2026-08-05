@@ -63,16 +63,72 @@ class ExtentosConnectionStatusTest {
     assertFalse(GlassesState.Registered.toConnectionStatus().canStream)
   }
 
+  // ── Link demotion: leaving Active is what stops a capture ──────────────
+  //
+  // The stop condition is a TRANSITION. A single-state check cannot express
+  // it, because Registered and Connecting are also the normal states on the
+  // way UP; the difference is entirely whether we arrived from Active.
+
+  private fun active(camera: CameraStatus = CameraStatus.READY) =
+      GlassesState.Active(
+          ActiveState.Connected(
+              device =
+                  DeviceInfo(
+                      id = "device-1",
+                      modelName = "Ray-Ban Meta",
+                      firmwareVersion = "test",
+                      deviceType = DeviceType.META_RAYBAN,
+                      vendor = "Meta",
+                      modelId = "test-model",
+                  ),
+              camera = camera,
+          )
+      )
+
   @Test
-  fun `connecting during capture is transient and does not stop the stream`() {
-    assertFalse(GlassesState.Connecting("device-1").shouldStopGlassesCapture())
+  fun `Active to Connecting stops the capture`() {
+    assertTrue(shouldStopGlassesCapture(active(), GlassesState.Connecting("device-1")))
   }
 
   @Test
-  fun `explicit disconnect during capture stops the stream`() {
+  fun `Active to Registered stops the capture`() {
+    // The demotion that actually fires on Meta hardware: the SDK treats the
+    // BLE link state as authoritative and demotes Active the moment it drops.
+    assertTrue(shouldStopGlassesCapture(active(), GlassesState.Registered))
+  }
+
+  @Test
+  fun `Active to Disconnected stops the capture`() {
     assertTrue(
-        GlassesState.Disconnected(DisconnectCause.DeviceDroppedConnection)
-            .shouldStopGlassesCapture()
+        shouldStopGlassesCapture(
+            active(),
+            GlassesState.Disconnected(DisconnectCause.DeviceDroppedConnection),
+        )
     )
+  }
+
+  @Test
+  fun `the initial handshake up to Active never stops a capture`() {
+    // Registered -> Connecting -> Active. None of these arrive from Active,
+    // so none of them are a demotion. A first emission has no previous state.
+    assertFalse(shouldStopGlassesCapture(null, GlassesState.Registered))
+    assertFalse(shouldStopGlassesCapture(GlassesState.Registered, GlassesState.Connecting("device-1")))
+    assertFalse(shouldStopGlassesCapture(GlassesState.Connecting("device-1"), active()))
+  }
+
+  @Test
+  fun `camera arming inside Active never stops a capture`() {
+    // READY -> STARTING -> READY. The SDK refines the camera status rather
+    // than regressing the top-level state precisely so this is not a
+    // disconnect; both endpoints are still Active, so neither is a demotion.
+    assertFalse(shouldStopGlassesCapture(active(CameraStatus.READY), active(CameraStatus.STARTING)))
+    assertFalse(shouldStopGlassesCapture(active(CameraStatus.STARTING), active(CameraStatus.READY)))
+  }
+
+  @Test
+  fun `a broken camera is not a link demotion`() {
+    // Broken means a capture failed and needs a reconnect to clear. It is a
+    // camera-health signal, not a lost link, and the stream is still up.
+    assertFalse(shouldStopGlassesCapture(active(CameraStatus.READY), active(CameraStatus.BROKEN)))
   }
 }
