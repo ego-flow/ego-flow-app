@@ -259,7 +259,6 @@ class StreamViewModel(
     }
     val generation = nextStreamLifecycleGeneration()
     stopRequested = false
-    extentosFrameAdapter.reset()
     latestGlassesFrame = null
     videoJob?.cancel()
     streamStartTimeoutJob?.cancel()
@@ -511,7 +510,6 @@ class StreamViewModel(
 
     videoJob?.cancel()
     videoJob = null
-    extentosFrameAdapter.reset()
     latestGlassesFrame = null
     phoneCameraManager?.stop()
     phoneCameraManager = null

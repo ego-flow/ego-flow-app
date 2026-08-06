@@ -85,12 +85,16 @@ class ExtentosFrameAdapterTest {
 
     // 2x2 I420 is exactly 6 bytes: 4 luma + 1 Cb + 1 Cr.
     val planar = ByteArray(6) { (it + 1).toByte() }
-    val adapted = adapter.adapt(rawFrame(timestampUs = 7_000L, data = planar))
+    // Deliberately NOT on a millisecond boundary: the helper derives
+    // timestampMs = timestampUs / 1000, so a regression to timestampMs * 1000
+    // would yield 7_000 and fail this assertion. That is the point: it proves
+    // the adapter passes timestampUs through rather than reconstructing it.
+    val adapted = adapter.adapt(rawFrame(timestampUs = 7_123L, data = planar))
 
     assertEquals(true, adapted.usedRawYuv)
     assertEquals(false, decoderCalled)
     assertArrayEquals(planar, adapted.frame.copyI420())
-    assertEquals(7_000L, adapted.frame.presentationTimeUs)
+    assertEquals(7_123L, adapted.frame.presentationTimeUs)
     // The point of the change: neither cost is paid on the raw path.
     assertEquals(0L, adapted.decodeDurationUs)
     assertEquals(0L, adapted.conversionDurationUs)
@@ -114,11 +118,14 @@ class ExtentosFrameAdapterTest {
     // must decline it. The payload is a valid JPEG so the fallback can proceed.
     val jpegBody =
         byteArrayOf(0xff.toByte(), 0xd8.toByte(), 1, 2, 0xff.toByte(), 0xd9.toByte())
-    val adapted = adapter.adapt(rawFrame(timestampUs = 9_000L, data = jpegBody, width = 4, height = 2))
+    // Sub-millisecond value here too: the JPEG path reads source.timestampUs
+    // directly, so the fallback must preserve precision as exactly as the raw
+    // path does.
+    val adapted = adapter.adapt(rawFrame(timestampUs = 9_123L, data = jpegBody, width = 4, height = 2))
 
     assertEquals(false, adapted.usedRawYuv)
     assertEquals(true, decoderCalled)
-    assertEquals(9_000L, adapted.frame.presentationTimeUs)
+    assertEquals(9_123L, adapted.frame.presentationTimeUs)
     assertEquals(4, adapted.frame.width)
   }
 

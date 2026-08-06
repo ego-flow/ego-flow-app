@@ -58,10 +58,6 @@ internal class ExtentosFrameAdapter(
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
 
-  fun reset() {
-    // No cross-frame state left to reset; kept so callers need not change.
-  }
-
   fun adapt(source: VideoFrame): AdaptedExtentosFrame {
     if (source.format == VideoFrameFormat.RAW_YUV && isWellFormedI420(source)) {
       return AdaptedExtentosFrame(
