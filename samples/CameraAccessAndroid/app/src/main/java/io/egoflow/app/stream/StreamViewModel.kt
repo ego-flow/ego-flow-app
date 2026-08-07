@@ -647,8 +647,11 @@ class StreamViewModel(
   private fun logExtentosFrameDiagnostics(adapted: AdaptedExtentosFrame, frameNumber: Long) {
     Log.i(
         TAG,
-        "Extentos frame #$frameNumber signature=jpeg " +
-            "size=${adapted.jpegSizeBytes}B dimensions=${adapted.frame.width}x${adapted.frame.height} " +
+        "Extentos frame #$frameNumber " +
+            "format=${if (adapted.usedRawYuv) "raw_yuv" else "jpeg"} " +
+            "usedRawYuv=${adapted.usedRawYuv} " +
+            "sourceSize=${adapted.sourceSizeBytes}B " +
+            "dimensions=${adapted.frame.width}x${adapted.frame.height} " +
             "ptsUs=${adapted.frame.presentationTimeUs} decodeUs=${adapted.decodeDurationUs} " +
             "convertUs=${adapted.conversionDurationUs}",
     )

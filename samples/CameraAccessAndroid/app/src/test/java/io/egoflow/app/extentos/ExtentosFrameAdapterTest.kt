@@ -5,6 +5,7 @@ import com.extentos.glasses.core.VideoFrameFormat
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExtentosFrameAdapterTest {
@@ -32,7 +33,7 @@ class ExtentosFrameAdapterTest {
         byteArrayOf(16, 16, 16, 16, 128.toByte(), 128.toByte()),
         adapted.frame.copyI420(),
     )
-    assertEquals(6, adapted.jpegSizeBytes)
+    assertEquals(6, adapted.sourceSizeBytes)
   }
 
   @Test
@@ -101,33 +102,57 @@ class ExtentosFrameAdapterTest {
   }
 
   @Test
-  fun `a raw buffer of the wrong size falls back to JPEG instead of throwing`() {
-    // GlassesVideoFrame REQUIRES exactly width*height*3/2 and throws otherwise.
-    // The SDK hands over the platform's buffer untouched, so a stride-padded one
-    // is possible on hardware we have not measured. Falling back beats taking
-    // the whole stream down inside a require().
+  fun `a mis-sized RAW_YUV buffer fails with a layout error and never reaches the decoder`() {
+    // The SDK never labels JPEG bytes as RAW_YUV: on hardware the raw branch has no
+    // encode fallback (MetaHardwareBridge: `if (rawRequested) bytes`), and the
+    // simulator DROPS a frame it cannot convert rather than emitting it as JPEG
+    // (BrowserSimTransport: `jpegToI420(data) ?: return`). A mis-sized RAW_YUV
+    // payload is therefore still raw, and handing it to the JPEG decoder could only
+    // turn a precise layout problem into a misleading "not a complete JPEG payload".
     var decoderCalled = false
     val adapter =
         ExtentosFrameAdapter(
             jpegDecoder = {
               decoderCalled = true
-              DecodedArgbFrame(IntArray(8) { 0xff000000.toInt() }, 4, 2)
+              DecodedArgbFrame(IntArray(8), 4, 2)
             })
 
-    // A 4x2 frame needs 12 bytes of I420; this payload is 6, so the raw path
-    // must decline it. The payload is a valid JPEG so the fallback can proceed.
-    val jpegBody =
-        byteArrayOf(0xff.toByte(), 0xd8.toByte(), 1, 2, 0xff.toByte(), 0xd9.toByte())
-    // Sub-millisecond value here too: the JPEG path reads source.timestampUs
-    // directly, so the fallback must preserve precision as exactly as the raw
-    // path does.
-    val adapted = adapter.adapt(rawFrame(timestampUs = 9_123L, data = jpegBody, width = 4, height = 2))
+    // A 4x2 frame needs 12 bytes of packed I420; this payload is 6.
+    val exception =
+        assertThrows(IllegalArgumentException::class.java) {
+          adapter.adapt(rawFrame(timestampUs = 9_123L, data = ByteArray(6), width = 4, height = 2))
+        }
+
+    assertEquals(false, decoderCalled)
+    assertTrue(
+        "message should name both sizes, was: ${exception.message}",
+        exception.message!!.contains("requires 12 bytes, got 6"),
+    )
+  }
+
+  @Test
+  fun `the JPEG path preserves sub-millisecond timestamps`() {
+    // Same precision guard as the raw path: adaptJpeg reads source.timestampUs
+    // directly, so a regression to timestampMs * 1000 must fail here too.
+    val adapter =
+        ExtentosFrameAdapter(
+            jpegDecoder = { DecodedArgbFrame(IntArray(4) { 0xff000000.toInt() }, 2, 2) })
+
+    val adapted = adapter.adapt(jpegFrame(timestampUs = 9_123L))
 
     assertEquals(false, adapted.usedRawYuv)
-    assertEquals(true, decoderCalled)
     assertEquals(9_123L, adapted.frame.presentationTimeUs)
-    assertEquals(4, adapted.frame.width)
   }
+
+  private fun jpegFrame(timestampUs: Long): VideoFrame =
+      VideoFrame(
+          timestampMs = timestampUs / 1000,
+          width = 2,
+          height = 2,
+          data = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 1, 2, 0xff.toByte(), 0xd9.toByte()),
+          format = VideoFrameFormat.JPEG,
+          timestampUs = timestampUs,
+      )
 
   private fun rawFrame(
       timestampUs: Long,

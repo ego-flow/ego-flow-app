@@ -19,7 +19,7 @@ internal fun interface JpegFrameDecoder {
 internal data class AdaptedExtentosFrame(
     val frame: GlassesVideoFrame,
     /** Payload size of the source frame, whatever its format. */
-    val jpegSizeBytes: Int,
+    val sourceSizeBytes: Int,
     val decodeDurationUs: Long,
     val conversionDurationUs: Long,
     /** True when the frame arrived as planar I420 and needed no decode. */
@@ -37,16 +37,25 @@ internal data class AdaptedExtentosFrame(
  *    software ARGB->I420 conversion used to run on EVERY frame of a continuous
  *    stream, on a phone that is simultaneously encoding and publishing.
  *
- *  - **JPEG (fallback).** Unchanged from before, and deliberately kept.
+ *  - **JPEG.** Unchanged from before, and still the default the SDK serves.
  *
- * The fallback is not defensive paranoia. `GlassesVideoFrame` requires the buffer
- * to be EXACTLY `width * height * 3 / 2`, and the SDK passes the platform's raw
- * buffer through untouched — so whether it is tightly packed or stride-padded is
- * a property of the underlying camera stack, not of Extentos. It is tightly
- * packed on the hardware and resolutions we could check, but that is not a
- * guarantee across future SDK versions, other resolutions, or other devices.
- * Rather than let a padded buffer throw inside `GlassesVideoFrame.init` and take
- * the stream down, an unexpected size falls back to the JPEG path for that frame.
+ * The branch is on [VideoFrame.format] alone, because the SDK guarantees the label
+ * matches the payload. On hardware the raw branch has no encode fallback at all
+ * (`MetaHardwareBridge.videoFrames`: `if (rawRequested) bytes`), and in the browser
+ * simulator a frame that cannot be converted to I420 is DROPPED rather than emitted
+ * as JPEG (`BrowserSimTransport.videoFrames`: `jpegToI420(data) ?: return`). So a
+ * frame labelled `RAW_YUV` is always planar I420, on both substrates.
+ *
+ * That is why a size mismatch is a hard error here rather than a per-frame fall
+ * through to [adaptJpeg]. `GlassesVideoFrame` requires exactly
+ * `width * height * 3 / 2`, and whether the platform buffer is tightly packed or
+ * stride-padded is a property of the underlying camera stack. But a stride-padded
+ * raw buffer is still raw: JPEG-decoding it cannot succeed, so routing it to the
+ * JPEG path would only convert a precise layout error into a confusing
+ * "not a complete JPEG payload" one. Recovering from that condition means ending
+ * the collection and re-requesting the stream as
+ * `VideoFrameConfig(format = JPEG)`, which is a stream-level decision and not
+ * something this adapter can do per frame.
  *
  * Timestamps come straight from [VideoFrame.timestampUs]. The SDK guarantees they
  * are strictly increasing per stream (it clamps a non-advancing source timestamp
@@ -58,31 +67,47 @@ internal class ExtentosFrameAdapter(
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
 
-  fun adapt(source: VideoFrame): AdaptedExtentosFrame {
-    if (source.format == VideoFrameFormat.RAW_YUV && isWellFormedI420(source)) {
-      return AdaptedExtentosFrame(
-          frame =
-              GlassesVideoFrame(
-                  i420 = source.data,
-                  width = source.width,
-                  height = source.height,
-                  presentationTimeUs = source.timestampUs,
-              ),
-          jpegSizeBytes = source.data.size,
-          decodeDurationUs = 0,
-          conversionDurationUs = 0,
-          usedRawYuv = true,
-      )
-    }
-    return adaptJpeg(source)
-  }
+  fun adapt(source: VideoFrame): AdaptedExtentosFrame =
+      when (source.format) {
+        VideoFrameFormat.RAW_YUV -> adaptRawYuv(source)
+        else -> adaptJpeg(source)
+      }
 
-  /** Exactly what [GlassesVideoFrame] will accept — checked before, not after. */
-  private fun isWellFormedI420(source: VideoFrame): Boolean {
-    if (source.width <= 0 || source.height <= 0) return false
-    if (source.width % 2 != 0 || source.height % 2 != 0) return false
+  /**
+   * Planar I420 straight through. Validates the layout [GlassesVideoFrame] requires
+   * BEFORE constructing it, so a bad buffer produces an error naming the actual
+   * problem instead of an opaque failure inside the frame's init.
+   */
+  private fun adaptRawYuv(source: VideoFrame): AdaptedExtentosFrame {
+    require(source.width > 0 && source.height > 0) {
+      "Extentos RAW_YUV frame has non-positive dimensions ${source.width}x${source.height}"
+    }
+    require(source.width % 2 == 0 && source.height % 2 == 0) {
+      "Extentos RAW_YUV frame ${source.width}x${source.height} has odd dimensions; " +
+          "I420 subsamples chroma by two in each axis"
+    }
     val expected = source.width.toLong() * source.height.toLong() * 3L / 2L
-    return expected <= Int.MAX_VALUE && source.data.size.toLong() == expected
+    require(source.data.size.toLong() == expected) {
+      "Extentos RAW_YUV frame is not packed I420: ${source.width}x${source.height} " +
+          "requires $expected bytes, got ${source.data.size}. A stride-padded or " +
+          "otherwise non-packed layout cannot be reinterpreted as I420. Recover by " +
+          "restarting the stream as VideoFrameConfig(format = JPEG); it cannot be " +
+          "salvaged per frame."
+    }
+
+    return AdaptedExtentosFrame(
+        frame =
+            GlassesVideoFrame(
+                i420 = source.data,
+                width = source.width,
+                height = source.height,
+                presentationTimeUs = source.timestampUs,
+            ),
+        sourceSizeBytes = source.data.size,
+        decodeDurationUs = 0,
+        conversionDurationUs = 0,
+        usedRawYuv = true,
+    )
   }
 
   private fun adaptJpeg(source: VideoFrame): AdaptedExtentosFrame {
@@ -108,7 +133,7 @@ internal class ExtentosFrameAdapter(
                 height = decoded.height,
                 presentationTimeUs = source.timestampUs,
             ),
-        jpegSizeBytes = source.data.size,
+        sourceSizeBytes = source.data.size,
         decodeDurationUs = elapsedUs(decodeStartedNs, decodeFinishedNs),
         conversionDurationUs = elapsedUs(conversionStartedNs, conversionFinishedNs),
         usedRawYuv = false,
