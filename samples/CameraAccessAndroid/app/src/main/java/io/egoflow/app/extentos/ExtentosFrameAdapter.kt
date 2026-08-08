@@ -2,6 +2,7 @@ package io.egoflow.app.extentos
 
 import android.graphics.BitmapFactory
 import com.extentos.glasses.core.VideoFrame
+import com.extentos.glasses.core.VideoFrameFormat
 import io.egoflow.app.core.encoder.YuvFrameConverter
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
 
@@ -17,33 +18,100 @@ internal fun interface JpegFrameDecoder {
 
 internal data class AdaptedExtentosFrame(
     val frame: GlassesVideoFrame,
-    val jpegSizeBytes: Int,
+    /** Payload size of the source frame, whatever its format. */
+    val sourceSizeBytes: Int,
     val decodeDurationUs: Long,
     val conversionDurationUs: Long,
+    /** True when the frame arrived as planar I420 and needed no decode. */
+    val usedRawYuv: Boolean = false,
 )
 
-/** Converts Extentos' public JPEG frame payload into EgoFlow's transport-owned I420 frame. */
+/**
+ * Turns an Extentos [VideoFrame] into EgoFlow's transport-owned I420 frame.
+ *
+ * Two paths now:
+ *
+ *  - **RAW_YUV (preferred).** The SDK hands over planar I420 directly, so there is
+ *    nothing to decode or convert — `decodeDurationUs` and `conversionDurationUs`
+ *    are both 0. This is the whole point of the change: the JPEG decode and the
+ *    software ARGB->I420 conversion used to run on EVERY frame of a continuous
+ *    stream, on a phone that is simultaneously encoding and publishing.
+ *
+ *  - **JPEG.** Unchanged from before, and still the default the SDK serves.
+ *
+ * The branch is on [VideoFrame.format] alone, because the SDK guarantees the label
+ * matches the payload. On hardware the raw branch has no encode fallback at all
+ * (`MetaHardwareBridge.videoFrames`: `if (rawRequested) bytes`), and in the browser
+ * simulator a frame that cannot be converted to I420 is DROPPED rather than emitted
+ * as JPEG (`BrowserSimTransport.videoFrames`: `jpegToI420(data) ?: return`). So a
+ * frame labelled `RAW_YUV` is always planar I420, on both substrates.
+ *
+ * That is why a size mismatch is a hard error here rather than a per-frame fall
+ * through to [adaptJpeg]. `GlassesVideoFrame` requires exactly
+ * `width * height * 3 / 2`, and whether the platform buffer is tightly packed or
+ * stride-padded is a property of the underlying camera stack. But a stride-padded
+ * raw buffer is still raw: JPEG-decoding it cannot succeed, so routing it to the
+ * JPEG path would only convert a precise layout error into a confusing
+ * "not a complete JPEG payload" one. Recovering from that condition means ending
+ * the collection and re-requesting the stream as
+ * `VideoFrameConfig(format = JPEG)`, which is a stream-level decision and not
+ * something this adapter can do per frame.
+ *
+ * Timestamps come straight from [VideoFrame.timestampUs]. The SDK guarantees they
+ * are strictly increasing per stream (it clamps a non-advancing source timestamp
+ * to previous + 1), which is what the old `lastPresentationTimeUs` clamp here was
+ * compensating for before that guarantee existed.
+ */
 internal class ExtentosFrameAdapter(
     private val jpegDecoder: JpegFrameDecoder = AndroidJpegFrameDecoder,
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
-  private var lastPresentationTimeUs: Long? = null
 
-  fun reset() {
-    lastPresentationTimeUs = null
+  fun adapt(source: VideoFrame): AdaptedExtentosFrame =
+      when (source.format) {
+        VideoFrameFormat.RAW_YUV -> adaptRawYuv(source)
+        else -> adaptJpeg(source)
+      }
+
+  /**
+   * Planar I420 straight through. Validates the layout [GlassesVideoFrame] requires
+   * BEFORE constructing it, so a bad buffer produces an error naming the actual
+   * problem instead of an opaque failure inside the frame's init.
+   */
+  private fun adaptRawYuv(source: VideoFrame): AdaptedExtentosFrame {
+    require(source.width > 0 && source.height > 0) {
+      "Extentos RAW_YUV frame has non-positive dimensions ${source.width}x${source.height}"
+    }
+    require(source.width % 2 == 0 && source.height % 2 == 0) {
+      "Extentos RAW_YUV frame ${source.width}x${source.height} has odd dimensions; " +
+          "I420 subsamples chroma by two in each axis"
+    }
+    val expected = source.width.toLong() * source.height.toLong() * 3L / 2L
+    require(source.data.size.toLong() == expected) {
+      "Extentos RAW_YUV frame is not packed I420: ${source.width}x${source.height} " +
+          "requires $expected bytes, got ${source.data.size}. A stride-padded or " +
+          "otherwise non-packed layout cannot be reinterpreted as I420. Recover by " +
+          "restarting the stream as VideoFrameConfig(format = JPEG); it cannot be " +
+          "salvaged per frame."
+    }
+
+    return AdaptedExtentosFrame(
+        frame =
+            GlassesVideoFrame(
+                i420 = source.data,
+                width = source.width,
+                height = source.height,
+                presentationTimeUs = source.timestampUs,
+            ),
+        sourceSizeBytes = source.data.size,
+        decodeDurationUs = 0,
+        conversionDurationUs = 0,
+        usedRawYuv = true,
+    )
   }
 
-  fun adapt(source: VideoFrame): AdaptedExtentosFrame {
+  private fun adaptJpeg(source: VideoFrame): AdaptedExtentosFrame {
     require(isCompleteJpeg(source.data)) { "Extentos frame is not a complete JPEG payload" }
-
-    val sourcePresentationTimeUs = toPresentationTimeUs(source.timestampMs)
-    val previousTimestampUs = lastPresentationTimeUs
-    val presentationTimeUs =
-        if (previousTimestampUs == null || sourcePresentationTimeUs > previousTimestampUs) {
-          sourcePresentationTimeUs
-        } else {
-          previousTimestampUs + 1L
-        }
 
     val decodeStartedNs = nanoTime()
     val decoded = jpegDecoder.decode(source.data)
@@ -56,29 +124,20 @@ internal class ExtentosFrameAdapter(
     val conversionStartedNs = nanoTime()
     val i420 = YuvFrameConverter.argbToI420(decoded.pixels, decoded.width, decoded.height)
     val conversionFinishedNs = nanoTime()
-    val frame =
-        GlassesVideoFrame(
-            i420 = i420,
-            width = decoded.width,
-            height = decoded.height,
-            presentationTimeUs = presentationTimeUs,
-        )
 
-    lastPresentationTimeUs = presentationTimeUs
     return AdaptedExtentosFrame(
-        frame = frame,
-        jpegSizeBytes = source.data.size,
+        frame =
+            GlassesVideoFrame(
+                i420 = i420,
+                width = decoded.width,
+                height = decoded.height,
+                presentationTimeUs = source.timestampUs,
+            ),
+        sourceSizeBytes = source.data.size,
         decodeDurationUs = elapsedUs(decodeStartedNs, decodeFinishedNs),
         conversionDurationUs = elapsedUs(conversionStartedNs, conversionFinishedNs),
+        usedRawYuv = false,
     )
-  }
-
-  private fun toPresentationTimeUs(timestampMs: Long): Long {
-    require(timestampMs >= 0L) { "Extentos frame timestamp must be non-negative" }
-    require(timestampMs <= Long.MAX_VALUE / MICROSECONDS_PER_MILLISECOND) {
-      "Extentos frame timestamp is too large to convert to microseconds"
-    }
-    return timestampMs * MICROSECONDS_PER_MILLISECOND
   }
 
   private fun isCompleteJpeg(data: ByteArray): Boolean =
@@ -92,7 +151,6 @@ internal class ExtentosFrameAdapter(
       ((endNs - startNs).coerceAtLeast(0L)) / NANOSECONDS_PER_MICROSECOND
 
   private companion object {
-    const val MICROSECONDS_PER_MILLISECOND = 1_000L
     const val NANOSECONDS_PER_MICROSECOND = 1_000L
     const val JPEG_MARKER_PREFIX: Byte = 0xff.toByte()
     const val JPEG_START_OF_IMAGE: Byte = 0xd8.toByte()

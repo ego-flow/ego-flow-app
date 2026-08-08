@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.extentos.glasses.core.VideoFrameConfig
+import com.extentos.glasses.core.VideoFrameFormat
 import io.egoflow.app.R
 import io.egoflow.app.core.encoder.YuvFrameConverter
 import io.egoflow.app.core.transport.api.GlassesVideoFrame
@@ -43,6 +44,7 @@ import io.egoflow.app.stream.rtmp.RtmpVideoCodec
 import io.egoflow.app.transport.http.HttpTransportFactory
 import io.egoflow.app.transport.rtmp.RtmpTransportFactory
 import io.egoflow.app.transport.whip.WhipTransportFactory
+import com.extentos.glasses.core.GlassesState
 import io.egoflow.app.wearables.WearablesViewModel
 import io.egoflow.app.wearables.shouldStopGlassesCapture
 import java.io.File
@@ -149,11 +151,18 @@ class StreamViewModel(
 
   private fun collectGlassesConnectionState() {
     viewModelScope.launch {
+      // The stop condition is a TRANSITION, not a state, so the collector has to
+      // remember the previous one. Scoped to this collector rather than the
+      // ViewModel so a resubscribe starts from null and cannot read a stale
+      // Active left over from a previous session as a demotion.
+      var previousState: GlassesState? = null
       glasses.connection.state.collect { state ->
+        val previous = previousState
+        previousState = state
         val glassesCaptureIsActive =
             _uiState.value.streamingMode == StreamingMode.GLASSES && videoJob?.isActive == true
-        if (state.shouldStopGlassesCapture() && glassesCaptureIsActive && !stopRequested) {
-          Log.w(TAG, "Extentos disconnected during glasses capture: $state")
+        if (shouldStopGlassesCapture(previous, state) && glassesCaptureIsActive && !stopRequested) {
+          Log.w(TAG, "Extentos link demoted during glasses capture: $previous -> $state")
           stopStream(StopReason.GLASSES_STOP)
           wearablesViewModel.onStreamFailed()
         }
@@ -250,7 +259,6 @@ class StreamViewModel(
     }
     val generation = nextStreamLifecycleGeneration()
     stopRequested = false
-    extentosFrameAdapter.reset()
     latestGlassesFrame = null
     videoJob?.cancel()
     streamStartTimeoutJob?.cancel()
@@ -280,6 +288,11 @@ class StreamViewModel(
         VideoFrameConfig(
             frameRate = GLASSES_FRAME_RATE,
             resolution = SettingsManager.videoQuality.toExtentosResolution(),
+            // RAW_YUV hands us the planar I420 the transport already wants, so the
+            // per-frame JPEG decode + ARGB->I420 conversion disappear from the hot
+            // path. The adapter still handles the JPEG shape as a fallback -- see
+            // ExtentosFrameAdapter.
+            format = VideoFrameFormat.RAW_YUV,
         )
     videoJob =
         viewModelScope.launch(Dispatchers.Default) {
@@ -497,7 +510,6 @@ class StreamViewModel(
 
     videoJob?.cancel()
     videoJob = null
-    extentosFrameAdapter.reset()
     latestGlassesFrame = null
     phoneCameraManager?.stop()
     phoneCameraManager = null
@@ -635,8 +647,11 @@ class StreamViewModel(
   private fun logExtentosFrameDiagnostics(adapted: AdaptedExtentosFrame, frameNumber: Long) {
     Log.i(
         TAG,
-        "Extentos frame #$frameNumber signature=jpeg " +
-            "size=${adapted.jpegSizeBytes}B dimensions=${adapted.frame.width}x${adapted.frame.height} " +
+        "Extentos frame #$frameNumber " +
+            "format=${if (adapted.usedRawYuv) "raw_yuv" else "jpeg"} " +
+            "usedRawYuv=${adapted.usedRawYuv} " +
+            "sourceSize=${adapted.sourceSizeBytes}B " +
+            "dimensions=${adapted.frame.width}x${adapted.frame.height} " +
             "ptsUs=${adapted.frame.presentationTimeUs} decodeUs=${adapted.decodeDurationUs} " +
             "convertUs=${adapted.conversionDurationUs}",
     )

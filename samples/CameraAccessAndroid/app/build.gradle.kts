@@ -133,6 +133,7 @@ dependencies {
   implementation(libs.compose.icons.lucide)
   implementation(libs.extentos.glasses)
   implementation(libs.extentos.glasses.ui)
+  implementation(libs.extentos.glasses.meta)
   // EgoFlow additions
   implementation(libs.okhttp)
   implementation(libs.camerax.core)
