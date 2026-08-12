@@ -1,0 +1,10 @@
+title = "EgoFlow App Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated native-binary inventory contains only SHA-256 digests and Maven coordinates"
+paths = [
+  '''^docs/android-native-binary-inventory\.csv$''',
+]

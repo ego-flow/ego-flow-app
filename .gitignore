@@ -1,0 +1,42 @@
+# OS, editors, and local agent tooling
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+.agents/
+.codex/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+**/local.properties
+**/keystore.properties
+!**/keystore.properties.example
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+
+# Android and Gradle output
+**/.gradle/
+**/.kotlin/
+**/build/
+**/.externalNativeBuild/
+**/.cxx/
+*.apk
+*.aab
+
+# Xcode output and user state
+**/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+
+# Generated media / local runtime output
+samples/video-ingest-server/recordings/
+*.log
+*.tmp
+
+/specs
+/tasks

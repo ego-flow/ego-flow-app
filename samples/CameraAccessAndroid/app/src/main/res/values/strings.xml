@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" project="cameraaccess">
+    <string name="app_name">EgoFlow</string>
+
+    <!-- Home Screen -->
+    <string name="register_button_title" description="Connect App">Connect my glasses</string>
+    <string name="unregister_button_title" description="Disconnect App">Disconnect</string>
+    <string name="stream_button_title" description="Start streaming">Start streaming</string>
+    <string name="stop_stream_button_title" description="Stop streaming">Stop streaming</string>
+    <string name="home_tip_video_title" description="Tip title about video capture">Video Capture</string>
+    <string name="home_tip_audio_title" description="Tip title about audio">Open-Ear Audio</string>
+    <string name="home_tip_hands_title" description="Tip title about hands free">Enjoy On-the-Go</string>
+    <string name="home_tip_video" description="Tip about video capture">Record videos directly from your glasses, from your point of view.</string>
+    <string name="home_tip_audio" description="Tip about audio">Hear notifications while keeping your ears open to the world around you.</string>
+    <string name="home_tip_hands" description="Tip about hands free">Stay hands-free while you move through your day. Move freely, stay connected.</string>
+    <string name="home_redirect_message" description="Redirect message">You\'ll be redirected to the Meta AI app to confirm your connection.</string>
+
+    <!-- Non Stream Screen -->
+    <string name="camera_access_icon_description" description="Camera Access icon description">Camera Access icon</string>
+    <string name="non_stream_screen_description" description="Non stream screen description">Tap the Start streaming button to stream video from your glasses or use the camera button to take a photo from your glasses.</string>
+    <string name="non_stream_screen_title" description="Non stream screen title">Stream Your Glasses Camera</string>
+    <string name="waiting_for_active_device" description="Waiting for active device message">Waiting for an active device</string>
+    <string name="stream_transition_starting" description="Shown on the loading overlay while a stream is starting">Starting stream…</string>
+    <string name="stream_transition_stopping" description="Shown on the loading overlay while a stream is stopping">Stopping stream…</string>
+
+    <!-- Record tab: no repository state -->
+    <string name="record_no_repo_title" description="Title shown on the Record tab when the account has no repositories">No repository yet</string>
+    <string name="record_no_repo_description" description="Guidance shown on the Record tab when the account has no repositories">Add a repository from the EgoFlow dashboard, then refresh to start streaming.</string>
+    <string name="record_no_repo_refresh" description="Button that re-checks for repositories">Refresh</string>
+    <string name="record_no_repo_refreshing" description="Refresh button label while a check is in progress">Refreshing…</string>
+    <string name="record_no_repo_view" description="Button that opens the Repositories tab">View repositories</string>
+
+    <!-- SharePhotoDialog -->
+    <string name="photo_captured" description="Photo Captured">Photo Captured</string>
+    <string name ="captured_photo" description="Captured Photo">Captured Photo</string>
+    <string name ="capture_photo" description="Capture Photo">Capture Photo</string>
+    <string name="share" description="Share">Share</string>
+
+    <!-- Getting Started Sheet -->
+    <string name="getting_started_title" description="Getting Started sheet title">You\'re all set</string>
+    <string name="getting_started_subtitle" description="Getting Started sheet subtitle">Three steps to go live.</string>
+    <string name="getting_started_step_repo_title" description="Step 1 title: choose a repository">Pick a repository</string>
+    <string name="getting_started_step_repo_desc" description="Step 1 description">Choose one on the Repo tab.</string>
+    <string name="getting_started_step_live_title" description="Step 2 title: go live">Go live</string>
+    <string name="getting_started_step_live_desc" description="Step 2 description">Tap Start streaming on the Record tab.</string>
+    <string name="getting_started_step_photo_title" description="Step 3 title: capture photos">Capture photos</string>
+    <string name="getting_started_step_photo_desc" description="Step 3 description">Tap the shutter while live.</string>
+    <string name="getting_started_continue" description="Continue button">Got it</string>
+
+    <!-- Permission intro -->
+    <string name="permission_intro_title" description="Permission intro title">Review app permissions</string>
+    <string name="permission_intro_subtitle" description="Permission intro subtitle">EgoFlow only asks for permissions that support recording, streaming, and device connection.</string>
+    <string name="permission_intro_allow" description="Button that starts the system permission request">Allow permissions</string>
+    <string name="permission_intro_continue_without_notifications" description="Button that continues without notification permission">Continue without notifications</string>
+    <string name="permission_intro_required" description="Badge for permissions required to enter the app">Required</string>
+    <string name="permission_intro_recommended" description="Badge for permissions recommended but not required">Recommended</string>
+    <string name="permission_intro_required_error" description="Shown when a required permission is denied">Camera, microphone, and Bluetooth permissions are required to continue.</string>
+    <string name="permission_intro_camera_title" description="Camera permission title">Camera</string>
+    <string name="permission_intro_camera_description" description="Camera permission explanation">Streams video from your phone camera when you choose phone mode.</string>
+    <string name="permission_intro_microphone_title" description="Microphone permission title">Microphone</string>
+    <string name="permission_intro_microphone_description" description="Microphone permission explanation">Captures audio for live streaming and microphone diagnostics.</string>
+    <string name="permission_intro_bluetooth_title" description="Bluetooth permission title">Bluetooth</string>
+    <string name="permission_intro_bluetooth_description" description="Bluetooth permission explanation">Connects to your smart glasses and keeps the active device status up to date.</string>
+    <string name="permission_intro_notifications_title" description="Notifications permission title">Notifications</string>
+    <string name="permission_intro_notifications_description" description="Notifications permission explanation">Shows active streaming and upload status while EgoFlow runs in the background.</string>
+
+    <!-- Device update required -->
+    <string name="update_required_title" description="Update required banner title">Update required</string>
+    <string name="update_required_firmware_message" description="Firmware update required message">Your glasses firmware needs an update before you can start streaming.</string>
+    <string name="update_required_dat_app_message" description="Glasses app update required message">The app on your glasses needs an update before you can start streaming.</string>
+    <string name="update_required_both_message" description="Both updates required message">Your glasses firmware and app need updates before you can start streaming.</string>
+    <string name="update_firmware_button_title" description="Update firmware button">Update firmware</string>
+    <string name="update_dat_app_button_title" description="Update glasses app button">Update app on glasses</string>
+
+    <!-- Friendly stream/session error messages -->
+    <string name="error_thermal" description="Glasses overheating error">Your glasses are too hot. Let them cool down before streaming again.</string>
+    <string name="error_battery_low" description="Battery low error">Your glasses battery is low. Charge them before streaming.</string>
+    <string name="error_battery_critical" description="Battery critical error">Your glasses battery is too low to keep streaming. Charge them and try again.</string>
+    <string name="error_peak_power" description="Peak power error">Your glasses hit a power limit and stopped streaming. Try again in a moment.</string>
+    <string name="error_device_disconnected" description="Device disconnected error">Lost connection to your glasses. Reconnect and try again.</string>
+    <string name="error_device_powered_off" description="Device powered off error">Your glasses powered off. Turn them back on and try again.</string>
+    <string name="error_stream_timeout" description="Stream timeout error">The stream timed out. Check your connection and try again.</string>
+    <string name="error_glasses_stream_start_timeout" description="Glasses stream did not start after session setup">Your glasses did not start sending video. Put them on, make sure the camera is available, then try again.</string>
+    <string name="error_glasses_stream_ended" description="Glasses ended the video stream">Your glasses ended the stream. Reconnect and try again.</string>
+</resources>

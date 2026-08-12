@@ -1,0 +1,17 @@
+*.iml
+.gradle
+.kotlin
+/local.properties
+/.idea
+.DS_Store
+/build
+**/build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+# Real release-signing credentials; see keystore.properties.example.
+keystore.properties
+# Never commit a signing keystore (release private key or the sample debug key).
+*.keystore
+*.jks

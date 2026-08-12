@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible problem in the supported Android client.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private endpoints, recordings, raw frames, transcripts, or personal data. Use the private security form for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      placeholder: v0.0.1 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Android, device, glasses, and server versions
+    validations:
+      required: true
+  - type: input
+    id: flow
+    attributes:
+      label: Capture source and transport
+      placeholder: Meta glasses + RTMP, phone camera + HTTP, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted logs
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed credentials, private URLs, recordings, raw frames, transcripts, and personal data.
+          required: true
